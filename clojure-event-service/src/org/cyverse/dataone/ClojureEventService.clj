@@ -18,7 +18,7 @@
   (log/info "getLogs()")
   (Log.))
 
-(defn -recordEvent [event id description]
+(defn -recordEvent [this event id description]
   (log/info "recordEvent()")
   (log/info (str "event: " event))
   (log/info (str "id: " id))
