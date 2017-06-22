@@ -11,7 +11,13 @@
                              [org.irods.jargon.core.connection.IRODSAccount
                               org.irods.jargon.dataone.configuration.PublicationContext]}))
 
-(def ^:private dataone-pid-attr "ipc-dataone-pid")
+(def ^:private default-pid-attr "dataone-pid")
+
+(defn- get-additional-properties [this]
+  (.. this getPublicationContext getAdditionalProperties))
+
+(defn- get-dataone-pid-attr [this]
+  (.getProperty (get-additional-properties this) "irods.dataone.pid.attr" default-pid-attr))
 
 (defn- attr-equals [attr]
   (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/ATTRIBUTE
@@ -29,7 +35,7 @@
 
 (defn- get-dataone-pid [this data-object]
   (let [data-object-ao (get-data-object-ao this)
-        query          [(attr-equals dataone-pid-attr)]
+        query          [(attr-equals (get-dataone-pid-attr this))]
         path           (.getAbsolutePath data-object)]
     (some-> (.findMetadataValuesForDataObjectUsingAVUQuery data-object-ao query path)
             first
@@ -37,7 +43,7 @@
 
 (defn- get-dataone-object [this id]
   (let [data-object-ao (get-data-object-ao this)
-        query          [(attr-equals dataone-pid-attr) (value-equals id)]]
+        query          [(attr-equals (get-dataone-pid-attr this)) (value-equals id)]]
     (some-> (.findDomainByMetadataQuery data-object-ao query)
             first)))
 
