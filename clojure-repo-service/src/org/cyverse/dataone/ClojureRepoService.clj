@@ -1,125 +1,153 @@
 (ns org.cyverse.dataone.ClojureRepoService
   (:refer-clojure)
   (:import [org.dataone.service.types.v1 Identifier]
-           [org.irods.jargon.core.pub DataAOHelper]
-           [org.irods.jargon.core.query GenQueryOrderByField$OrderByType IRODSGenQueryBuilder QueryConditionOperators
-            RodsGenQueryEnum]
-           [org.irods.jargon.dataone.reposervice DataObjectListResponse])
-  (:require [clojure.tools.logging :as log])
+           [org.irods.jargon.core.exception FileNotFoundException]
+           [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
+            CollectionAndDataObjectListingEntry$ObjectType QueryConditionOperators]
+           [org.irods.jargon.dataone.model CollectionDataOneObject DataOneObjectListResponse]
+           [java.util Date])
+  (:require [clojure.string :as string]
+            [clojure.tools.logging :as log]
+            [metadata-client.core :as c])
   (:gen-class :extends org.irods.jargon.dataone.reposervice.AbstractDataOneRepoServiceAO
               :init init
               :constructors {[org.irods.jargon.core.connection.IRODSAccount
-                              org.irods.jargon.dataone.configuration.PublicationContext]
+                              org.irods.jargon.dataone.plugin.PublicationContext]
                              [org.irods.jargon.core.connection.IRODSAccount
-                              org.irods.jargon.dataone.configuration.PublicationContext]}))
+                              org.irods.jargon.dataone.plugin.PublicationContext]}))
 
 ;; Default configuration settings.
 
-(def ^:private default-repo-path "/TempZone/dataone")
-(def ^:private default-pid-attr "dataone-pid")
-(def ^:private default-dataone-publication-date-attr "dataone-pub-date")
+(def ^:private default-uuid-attr "ipc_UUID")
+(def ^:private default-pid-attr "Identifier")
+(def ^:private default-metadata-base "http://metadata:60000")
+(def ^:private default-metadata-user "dataone")
 (def ^:private default-page-length "50")
+(def ^:private default-format "application/octet-stream")
 
 ;; Functions to retrieve configuration settings.
 
 (defn- get-additional-properties [this]
   (.. this getPublicationContext getAdditionalProperties))
 
-(defn- get-dataone-repo-path [this]
-  (.getProperty (get-additional-properties this) "irods.dataone.repo.path" default-repo-path))
+(defn- get-property [this name default]
+  (.getProperty (get-additional-properties this) name default))
+
+(defn- get-uuid-attr [this]
+  (get-property this "cyverse.avu.uuid-attr" default-uuid-attr))
 
 (defn- get-dataone-pid-attr [this]
-  (.getProperty (get-additional-properties this) "irods.dataone.attr.pid" default-pid-attr))
+  (get-property this "cyverse.metadata.pid-attr" default-pid-attr))
 
-(defn- get-dataone-publication-date-attr [this]
-  (.getProperty (get-additional-properties this) "irods.dataone.attr.pub-date" default-dataone-publication-date-attr))
+(defn- get-metadata-base [this]
+  (get-property this "cyverse.metadata.base" default-metadata-base))
+
+(defn- get-metadata-user [this]
+  (get-property this "cyverse.metadata.user" default-metadata-user))
 
 (defn- get-query-page-length [this]
-  (-> (.getProperty (get-additional-properties this) "irods.dataone.query-page-length" default-page-length)
+  (-> (get-property this "irods.dataone.query-page-length" default-page-length)
       Integer/parseInt))
 
-;; General query convenience functions.
+(defn- get-metadata-client [this]
+  (c/new-metadata-client (get-metadata-base this)))
 
-(defn- get-query-executor [this]
-  (.getIRODSGenQueryExecutor (.. this getPublicationContext getIrodsAccessObjectFactory)
-                             (.getIrodsAccount this)))
+;; General jargon convenience functions.
 
-(defn- lazy-rs
-  "Converts a query result set into a lazy sequence of query result sets."
-  [executor rs]
-  (if (.isHasMoreRecords rs)
-    (lazy-seq (cons rs (lazy-rs executor (.getMoreResults executor rs))))
-    (do (.closeResults executor rs) [rs])))
+(defn- get-collection-ao [this]
+  (.getCollectionAO (.. this getPublicationContext getIrodsAccessObjectFactory)
+                    (.getIrodsAccount this)))
 
-(defn- lazy-gen-query
-  "Performs a general query and returns a lazy sequence of results."
-  [this query]
-  (let [executor (get-query-executor this)]
-    (mapcat (fn [rs] (.getResults rs))
-            (lazy-rs executor (.executeIRODSQuery executor query 0)))))
+(defn- get-file-system-ao [this]
+  (.getIRODSFileSystemAO (.. this getPublicationContext getIrodsAccessObjectFactory)
+                         (.getIrodsAccount this)))
 
-(defn- gen-query
-  "Performs a general query and returns the result set. This result set will be closed automatically."
-  [this query offset]
-  (.executeIRODSQueryAndCloseResult (get-query-executor this) query offset))
+;; Common query conditions.
 
-;; Common general query conditions.
+(defn- attr-equals [attr]
+  (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/ATTRIBUTE
+                                         QueryConditionOperators/EQUAL
+                                         attr))
 
-(defn- in-repo? [builder this]
-  (.addConditionAsGenQueryField builder
-                                RodsGenQueryEnum/COL_COLL_NAME
-                                QueryConditionOperators/LIKE
-                                (str (get-dataone-repo-path this) "%")))
-
-(defn- is-pid-attr? [builder this]
-  (.addConditionAsGenQueryField builder
-                                RodsGenQueryEnum/COL_META_DATA_ATTR_NAME
-                                QueryConditionOperators/EQUAL
-                                (get-dataone-pid-attr this)))
-
-(defn- has-publication-date? [builder this]
-  (.addConditionAsGenQueryField builder
-                                RodsGenQueryEnum/COL_META_DATA_ATTR_NAME
-                                QueryConditionOperators/EQUAL
-                                (get-dataone-publication-date-attr this)))
+(defn- value-equals [value]
+  (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/VALUE
+                                         QueryConditionOperators/EQUAL
+                                         value))
 
 ;; Functions to retrieve the list of exposed identifiers.
 
-(defn- build-id-query [this]
-  (-> (IRODSGenQueryBuilder. true nil)
-      (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
-      (in-repo? this)
-      (is-pid-attr? this)
-      (has-publication-date? this)
-      (.addOrderByGenQueryField RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE GenQueryOrderByField$OrderByType/ASC)
-      (.exportIRODSQueryFromBuilder (get-query-page-length this))))
-
 (defn- list-exposed-identifiers [this]
-  (mapv (fn [row] (.getColumn row 0))
-        (lazy-gen-query this (build-id-query this))))
+  (->> (c/find-avus (get-metadata-client this) (get-metadata-user this)
+                    {:target-type "folder" :attribute (get-dataone-pid-attr this)})
+       :avus
+       (remove (comp string/blank? :value))
+       vec))
 
 ;; Functions to retrieve the list of exposed data objects.
 
-(defn- build-data-object-query [this from-date to-date format-id count]
-  (let [builder (IRODSGenQueryBuilder. true false true nil)]
-    (DataAOHelper/addDataObjectSelectsToBuilder builder)
-    (-> builder
-        (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_NAME)
-        (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
-        (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_UNITS)
-        (in-repo? this)
-        (is-pid-attr? this)
-        (has-publication-date? this)
-        (.addOrderByGenQueryField RodsGenQueryEnum/COL_D_DATA_PATH GenQueryOrderByField$OrderByType/ASC)
-        (.exportIRODSQueryFromBuilder count))))
+(defn- build-pred [pred l]
+  (if (nil? l)
+    (constantly true)
+    (fn [r] (pred l r))))
 
-(defn- list-exposed-data-objects [this from-date to-date format-id start-index count]
-  (let [rs   (gen-query this (build-data-object-query this from-date to-date format-id count))
-        rows (.getResults rs)]
-    (doto (DataObjectListResponse.)
-      (.setTotal (.getTotalRecords rs))
-      (.setCount (count rows))
-      (.setDataObjects (mapv (fn [row] (DataAOHelper/buildDomainFromResultSetRow row)) rows)))))
+(defn- get-time [d]
+  (when d
+    (.getTime d)))
+
+(defn- avu-matches? [from-date to-date avu]
+  ((every-pred (comp (build-pred <= (get-time from-date)) :modified_on)
+               (comp (build-pred >= (get-time to-date)) :modified_on))
+   avu))
+
+(defn- list-matching-identifiers [this from-date to-date]
+  (some->> (list-exposed-identifiers this)
+           (filter (partial avu-matches? from-date to-date))
+           vec))
+
+(defn- collection-for-pid-avu [this {uuid :target_id pid :value}]
+  (let [collection-ao (get-collection-ao this)
+        query         [(attr-equals (get-uuid-attr this)) (value-equals uuid)]]
+    (when-let [collection (first (.findDomainByMetadataQuery collection-ao query))]
+      (CollectionDataOneObject. (.getPublicationContext this)
+                                (.getIrodsAccount this)
+                                (doto (Identifier.) (.setValue pid))
+                                collection))))
+
+(defn- apply-range [avus offset count]
+  (drop offset (if count (take count avus) avus)))
+
+;; TODO: modify this so that it does all of the collection lookups at once if it's too slow.
+(defn- list-exposed-collections [this from-date to-date start-index count]
+  (let [offset (or start-index 0)
+        avus   (list-matching-identifiers this from-date to-date)]
+    (DataOneObjectListResponse. (mapv (partial collection-for-pid-avu this)
+                                      (apply-range avus offset count))
+                                (count avus)
+                                offset)))
+
+(defn- is-collection? [this path]
+  (try
+    (let [stat (.getObjStat (get-file-system-ao this) path)]
+      (= (.getObjectType stat)
+         (CollectionAndDataObjectListingEntry$ObjectType/COLLECTION)))
+    (catch FileNotFoundException e false)))
+
+(defn- get-collection-uuid [this path]
+  (when (is-collection? this path)
+    (let [collection-ao (get-collection-ao this)
+          query         [(attr-equals (get-uuid-attr this))]]
+      (some-> (.findMetadataValuesByMetadataQueryForCollection collection-ao query path)
+              first
+              (.getAvuValue)))))
+
+(defn- valid-pid-attr? [this {:keys [attr value]}]
+  (and (= attr (get-dataone-pid-attr this))
+       (not (string/blank? value))))
+
+(defn- uuid->avu [this uuid]
+  (->> (:avus (c/list-avus (get-metadata-client this) (get-metadata-user this) "folder" uuid))
+       (filter (partial valid-pid-attr? this))
+       first))
 
 ;; Class method implementations.
 
@@ -127,8 +155,19 @@
   [[irods-account publication-context] {}])
 
 (defn -getListOfDataoneExposedIdentifiers [this]
-  (mapv (fn [s] (doto (Identifier.) (.setValue s)))
+  (mapv (fn [s] (doto (Identifier.) (.setValue (:value s))))
         (list-exposed-identifiers this)))
 
-(defn -getListOfDataoneExposedDataObjects [this from-date to-date format-id _ start-index count]
-  (list-exposed-data-objects this from-date to-date format-id start-index count))
+(defn -getExposedObjects [this from-date to-date format-id _ start-index count]
+  (if (or (nil? format-id) (= (.getValue format-id) default-format))
+    (list-exposed-collections this from-date to-date start-index count)
+    (DataOneObjectListResponse. [] 0 (or start-index 0))))
+
+(defn -getLastModifiedDate [this path]
+  (some->> (get-collection-uuid this path)
+           (uuid->avu this)
+           :modified_on
+           (Date.)))
+
+(defn -getFormat [_ _]
+  default-format)
