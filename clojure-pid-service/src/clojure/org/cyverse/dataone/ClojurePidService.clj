@@ -1,4 +1,5 @@
 (ns org.cyverse.dataone.ClojurePidService
+  (:refer-clojure)
   (:import [org.irods.jargon.core.exception FileNotFoundException]
            [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
             CollectionAndDataObjectListingEntry$ObjectType QueryConditionOperators]

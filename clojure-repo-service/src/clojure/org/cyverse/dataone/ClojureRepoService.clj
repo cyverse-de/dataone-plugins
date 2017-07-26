@@ -113,15 +113,15 @@
                                 (doto (Identifier.) (.setValue pid))
                                 collection))))
 
-(defn- apply-range [avus offset count]
-  (drop offset (if count (take count avus) avus)))
+(defn- apply-range [avus offset limit]
+  (drop offset (if limit (take limit avus) avus)))
 
 ;; TODO: modify this so that it does all of the collection lookups at once if it's too slow.
-(defn- list-exposed-collections [this from-date to-date start-index count]
+(defn- list-exposed-collections [this from-date to-date start-index limit]
   (let [offset (or start-index 0)
         avus   (list-matching-identifiers this from-date to-date)]
     (DataOneObjectListResponse. (mapv (partial collection-for-pid-avu this)
-                                      (apply-range avus offset count))
+                                      (apply-range avus offset limit))
                                 (count avus)
                                 offset)))
 
@@ -158,9 +158,13 @@
   (mapv (fn [s] (doto (Identifier.) (.setValue (:value s))))
         (list-exposed-identifiers this)))
 
-(defn -getExposedObjects [this from-date to-date format-id _ start-index count]
-  (if (or (nil? format-id) (= (.getValue format-id) default-format))
-    (list-exposed-collections this from-date to-date start-index count)
+(defn -getExposedObjects [this from-date to-date format-id _ start-index limit]
+  (if (or (nil? (some-> format-id .getValue)) (= (.getValue format-id) default-format))
+    (try
+      (log/spy :warn (list-exposed-collections this from-date to-date start-index limit))
+      (catch Throwable t
+        (log/error t)
+        (throw t)))
     (DataOneObjectListResponse. [] 0 (or start-index 0))))
 
 (defn -getLastModifiedDate [this path]
