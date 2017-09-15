@@ -60,7 +60,7 @@
 
 (defn- get-dataone-file [this uuid]
   (let [data-object-ao (get-data-object-ao this)
-        query          [(attr-equals (get-uuid-attr this)) (value-equals pid)]]
+        query          [(attr-equals (get-uuid-attr this)) (value-equals uuid)]]
     (first (.findDomainByMetadataQuery data-object-ao query))))
 
 (defn -init [irods-account publication-context]
@@ -72,5 +72,5 @@
       (.setValue pid))))
 
 (defn -getObject [this pid]
-  (when-let [collection (get-dataone-collection this (.getValue pid))]
-    (FileDataOneObject. (.getPublicationContext this) (.getIrodsAccount this) pid collection)))
+  (when-let [file (get-dataone-file this (.getValue pid))]
+    (FileDataOneObject. (.getPublicationContext this) (.getIrodsAccount this) pid file)))
