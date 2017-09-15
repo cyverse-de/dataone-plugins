@@ -3,11 +3,10 @@
   (:import [org.irods.jargon.core.exception FileNotFoundException]
            [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
             CollectionAndDataObjectListingEntry$ObjectType QueryConditionOperators]
-           [org.irods.jargon.dataone.model CollectionDataOneObject]
+           [org.irods.jargon.dataone.model FileDataOneObject]
            [org.dataone.service.types.v1 Identifier])
   (:require [clojure.string :as string]
-            [clojure.tools.logging :as log]
-            [metadata-client.core :as c])
+            [clojure.tools.logging :as log])
   (:gen-class :extends org.irods.jargon.dataone.pidservice.AbstractDataOnePidServiceAO
               :init init
               :state state
@@ -17,9 +16,6 @@
                               org.irods.jargon.dataone.plugin.PublicationContext]}))
 
 (def ^:private default-uuid-attr "ipc_UUID")
-(def ^:private default-pid-attr "Identifier")
-(def ^:private default-metadata-base "http://metadata:60000")
-(def ^:private default-metadata-user "dataone")
 
 (defn- get-additional-properties [this]
   (.. this getPublicationContext getAdditionalProperties))
@@ -29,35 +25,6 @@
 
 (defn- get-uuid-attr [this]
   (get-property this "cyverse.avu.uuid-attr" default-uuid-attr))
-
-(defn- get-dataone-pid-attr [this]
-  (get-property this "cyverse.metadata.pid-attr" default-pid-attr))
-
-(defn- get-metadata-base [this]
-  (get-property this "cyverse.metadata.base" default-metadata-base))
-
-(defn- get-metadata-user [this]
-  (get-property this "cyverse.metadata.user" default-metadata-user))
-
-(defn- get-metadata-client [this]
-  (c/new-metadata-client (get-metadata-base this)))
-
-(defn- valid-pid-attr? [this {:keys [attr value]}]
-  (and (= attr (get-dataone-pid-attr this))
-       (not (string/blank? value))))
-
-(defn- uuid->pid [this uuid]
-  (->> (:avus (c/list-avus (get-metadata-client this) (get-metadata-user this) "folder" uuid))
-       (filter (partial valid-pid-attr? this))
-       first
-       :value))
-
-(defn- pid->uuid [this pid]
-  (->> (:avus (c/find-avus (get-metadata-client this) (get-metadata-user this)
-                           {:target-type "folder" :attribute (get-dataone-pid-attr this) :value pid}))
-       (remove (comp string/blank? :value))
-       first
-       :target_id))
 
 (defn- attr-equals [attr]
   (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/ATTRIBUTE
@@ -69,38 +36,32 @@
                                          QueryConditionOperators/EQUAL
                                          value))
 
-(defn- get-collection-ao [this]
-  (.getCollectionAO (.. this getPublicationContext getIrodsAccessObjectFactory)
+(defn- get-data-object-ao [this]
+  (.getDataObjectAO (.. this getPublicationContext getIrodsAccessObjectFactory)
                     (.getIrodsAccount this)))
 
 (defn- get-file-system-ao [this]
   (.getIRODSFileSystemAO (.. this getPublicationContext getIrodsAccessObjectFactory)
                          (.getIrodsAccount this)))
 
-(defn- is-collection? [this path]
+(defn- is-file? [this path]
   (try
     (let [stat (.getObjStat (get-file-system-ao this) path)]
       (= (.getObjectType stat)
-         (CollectionAndDataObjectListingEntry$ObjectType/COLLECTION)))
-    (catch FileNotFoundException e false)))
-
-(defn- get-collection-uuid [this path]
-  (when (is-collection? this path)
-    (let [collection-ao (get-collection-ao this)
-          query         [(attr-equals (get-uuid-attr this))]]
-      (some-> (.findMetadataValuesByMetadataQueryForCollection collection-ao query path)
-              first
-              (.getAvuValue)))))
+         (CollectionAndDataObjectListingEntry$ObjectType/DATA_OBJECT)))
+    (catch FileNotFoundException _ false)))
 
 (defn- get-dataone-pid [this path]
-  (when-let [uuid (get-collection-uuid this path)]
-    (uuid->pid this uuid)))
+  (when (is-file? this path)
+    (let [data-object-ao (get-data-object-ao this)
+          query          [(attr-equals (get-uuid-attr this))]]
+      (some-> (first (.findMetadataValuesForDataObjectUsingAVUQuery data-object-ao query path))
+              (.getAvuValue)))))
 
-(defn- get-dataone-collection [this pid]
-  (let [collection-ao (get-collection-ao this)
-        uuid          (pid->uuid this pid)
-        query         [(attr-equals (get-uuid-attr this)) (value-equals pid)]]
-    (first (.findDomainByMetadataQuery collection-ao query))))
+(defn- get-dataone-file [this uuid]
+  (let [data-object-ao (get-data-object-ao this)
+        query          [(attr-equals (get-uuid-attr this)) (value-equals pid)]]
+    (first (.findDomainByMetadataQuery data-object-ao query))))
 
 (defn -init [irods-account publication-context]
   [[irods-account publication-context] {}])
@@ -112,4 +73,4 @@
 
 (defn -getObject [this pid]
   (when-let [collection (get-dataone-collection this (.getValue pid))]
-    (CollectionDataOneObject. (.getPublicationContext this) (.getIrodsAccount this) pid collection)))
+    (FileDataOneObject. (.getPublicationContext this) (.getIrodsAccount this) pid collection)))
