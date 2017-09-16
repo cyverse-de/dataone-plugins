@@ -2,13 +2,13 @@
   (:refer-clojure)
   (:import [org.dataone.service.types.v1 Identifier]
            [org.irods.jargon.core.exception FileNotFoundException]
-           [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
-            CollectionAndDataObjectListingEntry$ObjectType QueryConditionOperators]
+           [org.irods.jargon.core.pub DataAOHelper]
+           [org.irods.jargon.core.query CollectionAndDataObjectListingEntry$ObjectType IRODSGenQueryBuilder
+            QueryConditionOperators]
            [org.irods.jargon.dataone.model CollectionDataOneObject DataOneObjectListResponse]
            [java.util Date])
   (:require [clojure.string :as string]
-            [clojure.tools.logging :as log]
-            [metadata-client.core :as c])
+            [clojure.tools.logging :as log])
   (:gen-class :extends org.irods.jargon.dataone.reposervice.AbstractDataOneRepoServiceAO
               :init init
               :constructors {[org.irods.jargon.core.connection.IRODSAccount
@@ -19,9 +19,7 @@
 ;; Default configuration settings.
 
 (def ^:private default-uuid-attr "ipc_UUID")
-(def ^:private default-pid-attr "Identifier")
-(def ^:private default-metadata-base "http://metadata:60000")
-(def ^:private default-metadata-user "dataone")
+(def ^:private default-root "/iplant/home/shared/commons_repo/curated")
 (def ^:private default-page-length "50")
 (def ^:private default-format "application/octet-stream")
 
@@ -36,21 +34,18 @@
 (defn- get-uuid-attr [this]
   (get-property this "cyverse.avu.uuid-attr" default-uuid-attr))
 
-(defn- get-dataone-pid-attr [this]
-  (get-property this "cyverse.metadata.pid-attr" default-pid-attr))
-
-(defn- get-metadata-base [this]
-  (get-property this "cyverse.metadata.base" default-metadata-base))
-
-(defn- get-metadata-user [this]
-  (get-property this "cyverse.metadata.user" default-metadata-user))
+(defn- get-root [this]
+  (get-property this "cyverse.dataone.root" default-root))
 
 (defn- get-query-page-length [this]
   (-> (get-property this "irods.dataone.query-page-length" default-page-length)
       Integer/parseInt))
 
-(defn- get-metadata-client [this]
-  (c/new-metadata-client (get-metadata-base this)))
+;; General convenience functions.
+
+(defn- get-time [d]
+  (when d
+    (.getTime d)))
 
 ;; General jargon convenience functions.
 
@@ -62,92 +57,46 @@
   (.getIRODSFileSystemAO (.. this getPublicationContext getIrodsAccessObjectFactory)
                          (.getIrodsAccount this)))
 
-;; Common query conditions.
-
-(defn- attr-equals [attr]
-  (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/ATTRIBUTE
-                                         QueryConditionOperators/EQUAL
-                                         attr))
-
-(defn- value-equals [value]
-  (AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/VALUE
-                                         QueryConditionOperators/EQUAL
-                                         value))
+(defn- get-gen-query-executor [this]
+  (.getIRODSGenQueryExecutor (.. this getPublicationContext getIrodsAccessObjectFactory)
+                             (.getIrodsAccount this)))
 
 ;; Functions to retrieve the list of exposed identifiers.
 
-(defn- list-exposed-identifiers [this]
-  (->> (c/find-avus (get-metadata-client this) (get-metadata-user this)
-                    {:target-type "folder" :attribute (get-dataone-pid-attr this)})
-       :avus
-       (remove (comp string/blank? :value))
-       vec))
+(defn- list-matching-identifiers [this from-date to-date])
 
 ;; Functions to retrieve the list of exposed data objects.
 
-(defn- build-pred [pred l]
-  (if (nil? l)
-    (constantly true)
-    (fn [r] (pred l r))))
+(defn- add-modify-time-condition [builder operator date]
+  (.addConditionAsGenQueryField builder "DATA_MODIFY_TIME" operator (quot (.getTime date) 1000)))
 
-(defn- get-time [d]
-  (when d
-    (.getTime d)))
+(defn- add-coll-name-condition [builder operator value]
+  (.addConditionAsGenQueryField builder "COLL_NAME" operator value))
 
-(defn- avu-matches? [from-date to-date avu]
-  ((every-pred (comp (build-pred <= (get-time from-date)) :modified_on)
-               (comp (build-pred >= (get-time to-date)) :modified_on))
-   avu))
+(defn- build-data-object-listing-query [this from-date to-date]
+  (-> (IRODSGenQueryBuilder. true false nil)
+      (DataAOHelper/addDataObjectSelectsToBuilder)
+      (add-modify-time-condition QueryConditionOperators/NUMERIC_GREATER_THAN_OR_EQUAL_TO from-date)
+      (add-modify-time-condition QueryConditionOperators/NUMERIC_LESS_THAN_OR_EQUAL_TO to-date)
+      (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))))
 
-(defn- list-matching-identifiers [this from-date to-date]
-  (some->> (list-exposed-identifiers this)
-           (filter (partial avu-matches? from-date to-date))
-           vec))
+;; TODO: finish implementing this function. We need to get the result set and verify that we can extract all of the
+;; results in the case where the limit is greater than the query length or not defined at all. This could cause a
+;; problem or slowness when we're closing the result set between pages.
+(defn- list-exposed-data-objects [this from-date to-date start-index limit]
+  (->> (build-data-object-listing-query this from-date to-date)
+       (.exportIRODSQueryFromBuilder (get-query-page-length))
+       (.executeIRODSQueryAndCloseResult (or start-index 0))))
 
-(defn- collection-for-pid-avu [this {uuid :target_id pid :value}]
-  (let [collection-ao (get-collection-ao this)
-        query         [(attr-equals (get-uuid-attr this)) (value-equals uuid)]]
-    (when-let [collection (first (.findDomainByMetadataQuery collection-ao query))]
-      (CollectionDataOneObject. (.getPublicationContext this)
-                                (.getIrodsAccount this)
-                                (doto (Identifier.) (.setValue pid))
-                                collection))))
+;; Last modification date functions.
 
-(defn- apply-range [avus offset limit]
-  (drop offset (if limit (take limit avus) avus)))
-
-;; TODO: modify this so that it does all of the collection lookups at once if it's too slow.
-(defn- list-exposed-collections [this from-date to-date start-index limit]
-  (let [offset (or start-index 0)
-        avus   (list-matching-identifiers this from-date to-date)]
-    (DataOneObjectListResponse. (mapv (partial collection-for-pid-avu this)
-                                      (apply-range avus offset limit))
-                                (count avus)
-                                offset)))
-
-(defn- is-collection? [this path]
+(defn- get-last-modified-date [this path]
   (try
     (let [stat (.getObjStat (get-file-system-ao this) path)]
-      (= (.getObjectType stat)
-         (CollectionAndDataObjectListingEntry$ObjectType/COLLECTION)))
-    (catch FileNotFoundException e false)))
-
-(defn- get-collection-uuid [this path]
-  (when (is-collection? this path)
-    (let [collection-ao (get-collection-ao this)
-          query         [(attr-equals (get-uuid-attr this))]]
-      (some-> (.findMetadataValuesByMetadataQueryForCollection collection-ao query path)
-              first
-              (.getAvuValue)))))
-
-(defn- valid-pid-attr? [this {:keys [attr value]}]
-  (and (= attr (get-dataone-pid-attr this))
-       (not (string/blank? value))))
-
-(defn- uuid->avu [this uuid]
-  (->> (:avus (c/list-avus (get-metadata-client this) (get-metadata-user this) "folder" uuid))
-       (filter (partial valid-pid-attr? this))
-       first))
+      (when (= (.getObjectType stat)
+               (CollectionAndDataObjectListingEntry$ObjectType/DATA_OBJECT))
+        (.getModifiedAt stat)))
+    (catch FileNotFoundException e nil)))
 
 ;; Class method implementations.
 
@@ -161,17 +110,14 @@
 (defn -getExposedObjects [this from-date to-date format-id _ start-index limit]
   (if (or (nil? (some-> format-id .getValue)) (= (.getValue format-id) default-format))
     (try
-      (log/spy :warn (list-exposed-collections this from-date to-date start-index limit))
+      (log/spy :warn (list-exposed-data-objects this from-date to-date start-index limit))
       (catch Throwable t
         (log/error t)
         (throw t)))
     (DataOneObjectListResponse. [] 0 (or start-index 0))))
 
 (defn -getLastModifiedDate [this path]
-  (some->> (get-collection-uuid this path)
-           (uuid->avu this)
-           :modified_on
-           (Date.)))
+  (get-last-modified-date this path))
 
 (defn -getFormat [_ _]
   default-format)
