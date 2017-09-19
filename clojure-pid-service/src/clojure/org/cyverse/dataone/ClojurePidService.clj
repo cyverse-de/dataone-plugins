@@ -51,6 +51,9 @@
          (CollectionAndDataObjectListingEntry$ObjectType/DATA_OBJECT)))
     (catch FileNotFoundException _ false)))
 
+(defn- get-last-modified-time [this path]
+  (.getModifiedAt (.getObjStat (get-file-system-ao this) path)))
+
 (defn- get-dataone-pid [this path]
   (when (is-file? this path)
     (let [data-object-ao (get-data-object-ao this)
@@ -73,4 +76,9 @@
 
 (defn -getObject [this pid]
   (when-let [file (get-dataone-file this (.getValue pid))]
-    (FileDataOneObject. (.getPublicationContext this) (.getIrodsAccount this) pid file)))
+    (FileDataOneObject.
+     (.getPublicationContext this)
+     (.getIrodsAccount this)
+     pid
+     (get-last-modified-time this (.getAbsolutePath file))
+     file)))

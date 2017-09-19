@@ -45,9 +45,12 @@
 
 ;; General convenience functions.
 
-(defn- get-time [d]
-  (when d
-    (.getTime d)))
+(defn- identifier-from-string [s]
+  (doto (Identifier.)
+    (.setValue s)))
+
+(defn- epoch-to-date [s]
+  (Date. (* 1000 (Long/parseLong s))))
 
 ;; General jargon convenience functions.
 
@@ -79,11 +82,18 @@
 
 (defn- gen-query
   "Performs a general query and returns the result set. This result set will be closed automatically."
-  [this query offset]
+  [this offset query]
   (.executeIRODSQueryAndCloseResult (get-gen-query-executor this) query offset))
 
+(defn- add-data-object-selects [builder]
+  (DataAOHelper/addDataObjectSelectsToBuilder builder)
+  builder)
+
 (defn- add-modify-time-condition [builder operator date]
-  (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_D_MODIFY_TIME operator (quot (.getTime date) 1000)))
+  (if-not (nil? date)
+    (let [timestamp (format "%011d" (quot (.getTime date) 1000))]
+      (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_D_MODIFY_TIME operator timestamp))
+    builder))
 
 (defn- add-coll-name-condition [builder operator value]
   (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_COLL_NAME operator value))
@@ -91,10 +101,13 @@
 (defn- add-attribute-name-condition [builder operator value]
   (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_META_DATA_ATTR_NAME operator value))
 
+(defn- add-replica-number-condition [builder operator value]
+  (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_DATA_REPL_NUM operator value))
+
 ;; Functions to retrieve the list of exposed identifiers.
 
 (defn- build-id-query [this]
-  (-> (IRODSGenQueryBuilder. true nil)
+  (-> (IRODSGenQueryBuilder. true false true nil)
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE GenQueryOrderByField$OrderByType/ASC)
       (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
@@ -102,21 +115,22 @@
       (.exportIRODSQueryFromBuilder (get-query-page-length this))))
 
 (defn- list-exposed-identifiers [this]
-  (mapv (fn [row] (doto (Identifier.) (.setValue (.getColumn row 0))))
-        (lazy-gen-query this (build-id-query this))))
+  (mapv (fn [row] (identifier-from-string (.getColumn row 0)))
+        (lazy-gen-query this 0 (build-id-query this))))
 
 ;; Functions to retrieve the list of exposed data objects.
 
 (defn- build-data-object-listing-query [this from-date to-date limit]
-  (-> (IRODSGenQueryBuilder. true false nil)
+  (-> (IRODSGenQueryBuilder. true false true nil)
+      add-data-object-selects
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_NAME)
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_UNITS)
-      (DataAOHelper/addDataObjectSelectsToBuilder)
-      (add-modify-time-condition QueryConditionOperators/NUMERIC_GREATER_THAN_OR_EQUAL_TO from-date)
-      (add-modify-time-condition QueryConditionOperators/NUMERIC_LESS_THAN_OR_EQUAL_TO to-date)
+      (add-modify-time-condition QueryConditionOperators/GREATER_THAN_OR_EQUAL_TO from-date)
+      (add-modify-time-condition QueryConditionOperators/LESS_THAN_OR_EQUAL_TO to-date)
       (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
+      (add-replica-number-condition QueryConditionOperators/EQUAL 0)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_D_DATA_PATH GenQueryOrderByField$OrderByType/ASC)
       (.exportIRODSQueryFromBuilder limit)))
 
@@ -124,11 +138,12 @@
   (FileDataOneObject.
    (.getPublicationContext this)
    (.getIrodsAccount this)
-   (.getColumn row RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
+   (identifier-from-string (.getColumn row (.getName RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)))
+   (epoch-to-date (.getColumn row (.getName RodsGenQueryEnum/COL_D_MODIFY_TIME)))
    (DataAOHelper/buildDomainFromResultSetRow row)))
 
-(defn- list-exposed-data-objects [this from-date to-date format-id start-index count]
-  (let [rs       (gen-query this (build-data-object-listing-query this from-date to-date format-id count))
+(defn- list-exposed-data-objects [this from-date to-date start-index count]
+  (let [rs       (gen-query this start-index (build-data-object-listing-query this from-date to-date count))
         elements (mapv (partial file-data-one-object-from-row this) (.getResults rs))]
     (DataOneObjectListResponse. elements (.getTotalRecords rs) start-index)))
 
@@ -155,7 +170,7 @@
         limit       (or limit default-limit)]
     (if (or (nil? (some-> format-id .getValue)) (= (.getValue format-id) default-format))
       (try
-        (log/spy :warn (list-exposed-data-objects this from-date to-date offset limit))
+        (list-exposed-data-objects this from-date to-date offset limit)
         (catch Throwable t
           (log/error t)
           (throw t)))
