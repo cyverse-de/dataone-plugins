@@ -1,4 +1,4 @@
-(ns org.cyverse.dataone.ClojureRepoService
+(ns org.cyverse.dataone.DataOneRepoService
   (:refer-clojure)
   (:import [org.dataone.service.types.v1 Identifier]
            [org.irods.jargon.core.exception FileNotFoundException]
