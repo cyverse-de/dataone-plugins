@@ -12,8 +12,10 @@ RUN echo "${CONSUL_TEMPLATE_SHA256SUM}  ${CONSUL_TEMPLATE_FILE}" | sha256sum -c 
     && mkdir -p /usr/local/bin \
     && mv consul-template /usr/local/bin/consul-template
 
+# TODO: add the code to download the event service plugin when it's available in a maven repo.
 COPY pid-service/target/dataone-pid-service-standalone.jar /etc/irods-ext/d1plugins/
 COPY repo-service/target/dataone-repo-service-standalone.jar /etc/irods-ext/d1plugins/
+
 COPY consul.hcl /
 COPY d1client.properties.tmpl /
 COPY generate-configs.sh /usr/local/bin/
