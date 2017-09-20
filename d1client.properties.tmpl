@@ -1,0 +1,82 @@
+{{ with $base := (printf "configs/%s" (env "DE_ENV")) -}}
+certificate.truststore.useDefault=true
+
+irods.dataone.identifier={{ key (printf "%s/dataone/identifier" $base) }}
+irods.dataone.replicate=true
+irods.dataone.sychronize=true
+irods.dataone.type=mn
+irods.dataone.name=Datanet Federation iRODS Node
+irods.dataone.description=DataONE Member Node for iRODS
+irods.dataone.baseurl={{ key (printf "%s/dataone/base" $base) }}
+irods.dataone.service.mncore=true
+irods.dataone.service.mncore.name=MNCore
+irods.dataone.service.mncore.version=v1
+irods.dataone.service.mnread=true
+irods.dataone.service.mnread.name=MNRead
+irods.dataone.service.mnread.version=v1
+irods.dataone.service.mnauthorization=false
+irods.dataone.service.mnauthorization.name=MNAuthorization
+irods.dataone.service.mnauthorization.version=v1
+irods.dataone.service.mnstorage=false
+irods.dataone.service.mnstorage.name=MNStorage
+irods.dataone.service.mnstorage.version=v1
+irods.dataone.service.mnreplication=false
+irods.dataone.service.mnreplication.name=MNReplication
+irods.dataone.service.mnreplication.version=v1
+irods.dataone.sync.schedule.hour=*
+irods.dataone.sync.schedule.mday=*
+irods.dataone.sync.schedule.min=0/3
+irods.dataone.sync.schedule.mon=*
+irods.dataone.sync.schedule.sec=10
+irods.dataone.sync.schedule.wday=?
+irods.dataone.sync.schedule.year=*
+irods.dataone.subject.dc1={{ key (printf "%s/dataone/subject-dc1" $base) }}
+irods.dataone.subject.dc2={{ key (printf "%s/dataone/subject-dc2" $base) }}
+irods.dataone.csubject.cn={{ key (printf "%s/dataone/cn" $base) }}
+irods.dataone.csubject.dc1={{ key (printf "%s/dataone/contact-subject-dc1" $base) }}
+irods.dataone.csubject.dc2={{ key (printf "%s/dataone/contact-subject-dc2" $base) }}
+irods.dataone.subject-string={{ key (printf "%s/dataone/subject-string" $base) }}
+irods.dataone.contact-subject-string={{ key (printf "%s/dataone/contact-subject-string" $base) }}
+irods.dataone.chksum-algorithm=MD5
+irods.dataone.publish_entity_metadata_attr=HandleApproval
+irods.dataone.publish_entity_metadata_value=DataOne
+
+irods.dataone.handle.namingAuthority={{ key (printf "%s/dataone/handle-naming-authority" $base) }}
+irods.dataone.handle.prefix={{ key (printf "%s/dataone/handle-prefix" $base) }}
+irods.dataone.handle.index={{ key (printf "%s/dataone/handle-index" $base) }}
+irods.dataone.handle.privateKeyPath={{ key (printf "%s/dataone/handle-private-key-path" $base) }}
+
+irods.dataone.config.realm={{ key (printf "%s/dataone/config-realm" $base) }}
+irods.dataone.config.smimeEncryptAdminFunctions=false
+irods.dataone.config.privateCertAbsPath=
+irods.dataone.config.publicKeyAbsPath=
+
+irods.dataone.query-page-length={{ key (printf "%s/dataone/query-page-length" $base) }}
+
+# iRODS Props
+irods.host={{ key (printf "%s/irods/host" $base) }}
+irods.port={{ key (printf "%s/irods/port" $base) }}
+irods.zone={{ key (printf "%s/irods/zone" $base) }}
+irods.username={{ key (printf "%s/irods/user" $base) }}
+irods.password={{ key (printf "%s/irods/pass" $base) }}
+
+# STANDARD | PAM AUTH
+auth.type=STANDARD
+default.storage.resource=
+
+# web.interface.url is currently optional and not fully implemented, it can be left blank.
+# sets jargon ssl negotiation policy for the client. Leaving to DONT_CARE defers to the server, and is recommended
+# NO_NEGOTIATION, CS_NEG_REFUSE, CS_NEG_REQUIRE, CS_NEG_DONT_CARE
+ssl.negotiation.policy=CS_NEG_DONT_CARE
+
+# location for discovered plug-ins
+plugin.jar.location=/etc/irods-ext/d1plugins
+
+plugin.factory.pid={{ key (printf "%s/dataone/plugin-pid" $base) }}
+plugin.factory.event={{ key (printf "%s/dataone/plugin-event" $base) }}
+plugin.factory.repo={{ key (printf "%s/dataone/plugin-repo" $base) }}
+
+# Custom Configuration Settings
+cyverse.avu.uuid-attr={{ key (printf "%s/dataone/uuid-attr" $base) }}
+cyverse.dataone.root={{ key (printf "%s/dataone/root-dir" $base) }}
+{{ end -}}
