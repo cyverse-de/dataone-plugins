@@ -12,7 +12,7 @@ def buildPlugin(subdir) {
     echo "${subdir} plugin version ${version}"
 
     // Build the plugin using a Docker image.
-    sh "docker run --rm -v \$(pwd)/${subidr}:/build -w /build clojure:alpine lein uberjar"
+    sh "docker run --rm -v \$(pwd)/${subdir}:/build -w /build clojure:alpine lein uberjar"
 }
 
 node('docker') {
