@@ -18,6 +18,8 @@ def buildPlugin(subdir) {
 node('docker') {
     slackJobDescription = "job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
     try {
+        checkout scm
+
         // Get the git commit hash and descriptive version.
         gitCommit = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
         descriptiveVersion = sh(returnStdout: true, script: "git describe --long --tags --dirty --always").trim()
