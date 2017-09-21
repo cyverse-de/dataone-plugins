@@ -8,7 +8,7 @@ def leinProjectVersion(file) {
 }
 
 def buildPlugin(subdir) {
-    version = leinProjectVersion("${subdir}/project.clj"))
+    version = leinProjectVersion("${subdir}/project.clj")
     echo "${subdir} plugin version ${version}"
 
     // Build the plugin using a Docker image.
