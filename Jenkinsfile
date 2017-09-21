@@ -4,11 +4,11 @@ import java.util.regex.Pattern
 import java.util.regex.Matcher
 
 def leinProjectVersion(file) {
-    return (file.text =~ /defproject\s+\S+\s+"([^"]+)"/)[0][1]
+    return (readFile(file) =~ /defproject\s+\S+\s+"([^"]+)"/)[0][1]
 }
 
 def buildPlugin(subdir) {
-    version = leinProjectVersion(new File(subdir, "project.clj"))
+    version = leinProjectVersion("${subdir}/project.clj"))
     echo "${subdir} plugin version ${version}"
 
     // Build the plugin using a Docker image.
