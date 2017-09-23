@@ -24,7 +24,11 @@ ENV ESVC_ARTIFACT=org.irods:default-event-service-api-impl:4.2.1.0-SNAPSHOT:jar:
 ENV ESVC_FILE=/etc/irods-ext/d1plugins/default-event-service-standalone.jar
 
 RUN apk add --update maven \
-    && mvn dependency:get -DrepoUrl=${ESVC_REPO_URL} -Dartifact=${ESVC_ARTIFACT} -Dtransitive=false -Ddest=${ESVC_FILE}
+    && mvn -q dependency:get \
+           -DrepoUrl=${ESVC_REPO_URL} \
+           -Dartifact=${ESVC_ARTIFACT} \
+           -Dtransitive=false \
+           -Ddest=${ESVC_FILE}
 
 ENV CLJ_VERSION="1.8.0"
 ENV CLJ_FILE="clojure-${CLJ_VERSION}.jar"
