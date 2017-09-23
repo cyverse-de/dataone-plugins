@@ -134,6 +134,7 @@ node('docker') {
 
             // Build the Docker image.
             dockerRepo = "${service.dockerUser}/${service.repo}:${env.BRANCH_NAME}"
+            echo "DEBUG: dockerRepo = ${dockerRepo}"
             milestone 100
             lock("docker-push-${dockerRepo}") {
                 milestone 101
@@ -142,7 +143,7 @@ node('docker') {
                 }
 
                 stage('Docker Push') {
-                    pushDockerImage(dockerRepo, imagePusher)
+                    pushDockerImage("${dockerRepo}", imagePusher)
                 }
             }
         } finally {
