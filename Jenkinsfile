@@ -15,6 +15,19 @@ def buildPlugin(subdir) {
     sh "docker run --rm -v \$(pwd)/${subdir}:/build -w /build clojure:alpine lein uberjar"
 }
 
+properties(
+    [
+        buildDiscarder(
+            logRotator(
+                artifactDaysToKeepStr: '',
+                artifactNumToKeepStr: '',
+                daysToKeepStr: '7',
+                numToKeepStr: '5'
+            )
+        )
+    ]
+)
+
 node('docker') {
     slackJobDescription = "job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
     try {
