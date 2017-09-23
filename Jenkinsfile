@@ -53,8 +53,8 @@ def pushDockerImage(repo, containerName) {
                        docker:\$(docker version --format '{{ .Server.Version }}') \\
                        sh -e -c \\
                 'docker login -u \"\$DOCKER_USERNAME\" -p \"\$DOCKER_PASSWORD\" && \\
-                 docker push ${repo}" && \\
-                 docker rmi ${repo}" && \\
+                 docker push ${repo} && \\
+                 docker rmi ${repo} && \\
                  docker logout'
         """
     }
@@ -134,7 +134,6 @@ node('docker') {
 
             // Build the Docker image.
             dockerRepo = "${service.dockerUser}/${service.repo}:${env.BRANCH_NAME}"
-            echo "DEBUG: dockerRepo = ${dockerRepo}"
             milestone 100
             lock("docker-push-${dockerRepo}") {
                 milestone 101
