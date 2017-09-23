@@ -107,9 +107,9 @@ node('docker') {
     descriptiveVersion = sh(returnStdout: true, script: "git describe --long --tags --dirty --always").trim()
 
     // Docker image names.
-    pidServiceBuilder = 'build-pid-service-${env.BUILD_TAG}'
-    repoServiceBuilder = 'build-repo-service-${env.BUILD_TAG}'
-    imagePusher = 'push-mn-service-${env.BUILD_TAG}'
+    pidServiceBuilder = "build-pid-service-${env.BUILD_TAG}"
+    repoServiceBuilder = "build-repo-service-${env.BUILD_TAG}"
+    imagePusher = "push-mn-service-${env.BUILD_TAG}"
 
     try {
         checkout scm
