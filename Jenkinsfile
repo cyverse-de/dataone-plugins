@@ -141,12 +141,6 @@ node('docker') {
                 pushDockerImage(dockerRepo, imagePusher)
             }
         }
-    } finally {
-        removeContainer(pidServiceBuilder)
-        removeContainer(repoServiceBuilder)
-        removeContainer(imagePusher)
-        removeImage(dockerRepo)
-        recordBuild("${service.repo}-${descriptiveVersion}")
     } catch (InterruptedException e) {
         currentBuild.result = "ABORTED"
         slackSend color: 'warning', message: "ABORTED: ${slackJobDescription}"
@@ -156,5 +150,11 @@ node('docker') {
         sh "echo ${e}"
         slackSend color: 'danger', message: "FAILED: ${slackJobDescription}"
         throw e
+    } finally {
+        removeContainer(pidServiceBuilder)
+        removeContainer(repoServiceBuilder)
+        removeContainer(imagePusher)
+        removeImage(dockerRepo)
+        recordBuild("${service.repo}-${descriptiveVersion}")
     }
 }
