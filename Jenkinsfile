@@ -102,44 +102,55 @@ properties(
 node('docker') {
     slackJobDescription = "job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})"
 
-    // Get the git commit hash and descriptive version.
-    gitCommit = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-    descriptiveVersion = sh(returnStdout: true, script: "git describe --long --tags --dirty --always").trim()
-
-    // Docker image names.
-    pidServiceBuilder = "build-pid-service-${env.BUILD_TAG}"
-    repoServiceBuilder = "build-repo-service-${env.BUILD_TAG}"
-    imagePusher = "push-mn-service-${env.BUILD_TAG}"
-
     try {
-        checkout scm
+        // Load the service properties.
+        service = readProperties file: 'service.properties'
 
-        // Display the git commit and descriptive version.
-        echo "git commit: ${gitCommit}"
-        echo "descriptive version: ${descriptiveVersion}"
+        // Get the git commit hash and descriptive version.
+        gitCommit = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+        descriptiveVersion = sh(returnStdout: true, script: "git describe --long --tags --dirty --always").trim()
 
-        // Build the pid service.
-        stage('PID Service') {
-            buildPlugin("pid-service", pidServiceBuilder)
-        }
+        // Docker image names.
+        pidServiceBuilder = "build-pid-service-${env.BUILD_TAG}"
+        repoServiceBuilder = "build-repo-service-${env.BUILD_TAG}"
+        imagePusher = "push-mn-service-${env.BUILD_TAG}"
 
-        // Build the repo service.
-        stage('Repo Service') {
-            buildPlugin("repo-service", repoServiceBuilder)
-        }
+        try {
+            checkout scm
 
-        // Build the Docker image.
-        dockerRepo = "${service.dockerUser}/${service.repo}:${env.BRANCH_NAME}"
-        milestone 100
-        lock("docker-push-${dockerRepo}") {
-            milestone 101
-            stage('Docker Build') {
-                buildDockerImage(gitCommit, descriptiveVersion, dockerRepo)
+            // Display the git commit and descriptive version.
+            echo "git commit: ${gitCommit}"
+            echo "descriptive version: ${descriptiveVersion}"
+
+            // Build the pid service.
+            stage('PID Service') {
+                buildPlugin("pid-service", pidServiceBuilder)
             }
 
-            stage('Docker Push') {
-                pushDockerImage(dockerRepo, imagePusher)
+            // Build the repo service.
+            stage('Repo Service') {
+                buildPlugin("repo-service", repoServiceBuilder)
             }
+
+            // Build the Docker image.
+            dockerRepo = "${service.dockerUser}/${service.repo}:${env.BRANCH_NAME}"
+            milestone 100
+            lock("docker-push-${dockerRepo}") {
+                milestone 101
+                stage('Docker Build') {
+                    buildDockerImage(gitCommit, descriptiveVersion, dockerRepo)
+                }
+
+                stage('Docker Push') {
+                    pushDockerImage(dockerRepo, imagePusher)
+                }
+            }
+        } finally {
+            removeContainer(pidServiceBuilder)
+            removeContainer(repoServiceBuilder)
+            removeContainer(imagePusher)
+            removeImage(dockerRepo)
+            recordBuild("${service.repo}-${descriptiveVersion}")
         }
     } catch (InterruptedException e) {
         currentBuild.result = "ABORTED"
@@ -150,11 +161,5 @@ node('docker') {
         sh "echo ${e}"
         slackSend color: 'danger', message: "FAILED: ${slackJobDescription}"
         throw e
-    } finally {
-        removeContainer(pidServiceBuilder)
-        removeContainer(repoServiceBuilder)
-        removeContainer(imagePusher)
-        removeImage(dockerRepo)
-        recordBuild("${service.repo}-${descriptiveVersion}")
     }
 }
