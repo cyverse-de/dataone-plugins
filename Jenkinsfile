@@ -30,7 +30,7 @@ def buildDockerImage(commit, version, repo) {
             --build-arg git_commit=${commit} \\
             --build-arg version=${version} \\
             --build-arg descriptive_version=${version} \\
-            -t ${repo}
+            -t ${repo} \\
             .
     """
 
