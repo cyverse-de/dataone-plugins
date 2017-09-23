@@ -12,13 +12,19 @@ RUN echo "${CONSUL_TEMPLATE_SHA256SUM}  ${CONSUL_TEMPLATE_FILE}" | sha256sum -c 
     && mkdir -p /usr/local/bin \
     && mv consul-template /usr/local/bin/consul-template
 
-# TODO: add the code to download the event service plugin when it's available in a maven repo.
 COPY pid-service/target/dataone-pid-service-standalone.jar /etc/irods-ext/d1plugins/
 COPY repo-service/target/dataone-repo-service-standalone.jar /etc/irods-ext/d1plugins/
 
 COPY consul.hcl /
 COPY d1client.properties.tmpl /
 COPY generate-configs.sh /usr/local/bin/
+
+ENV ESVC_REPO_URL=https://raw.github.com/slr71/maven/master/snapshots
+ENV ESVC_ARTIFACT=org.irods:default-event-service-api-impl:4.2.1.0-SNAPSHOT:jar:jar-with-dependencies
+ENV ESVC_FILE=/etc/irods-ext/d1plugins/default-event-service-standalone.jar
+
+RUN apk add --update maven \
+    && mvn dependency:get -DrepoUrl=${ESVC_REPO_URL} -Dartifact=${ESVC_ARTIFACT} -Dtransitive=false -Ddest=${ESVC_FILE}
 
 ENV CLJ_VERSION="1.8.0"
 ENV CLJ_FILE="clojure-${CLJ_VERSION}.jar"
