@@ -1,0 +1,11 @@
+{{ with $base := (printf "configs/%s" (env "DE_ENV")) -}}
+jdbc.url={{ key (printf "%s/event-db/jdbc-uri" $base) }}
+jdbc.user={{ key (printf "%s/event-db/user" $base) }}
+jdbc.password={{ key (printf "%s/event-db/pass" $base) }}
+jdbc.driver={{ key (printf "%s/event-db/driver" $base) }}
+hibernate.dialect={{ key (printf "%s/event-db/dialect" $base) }}
+amqp.host={{ key (printf "%s/irods-amqp/host" $base) }}
+amqp.port={{ key (printf "%s/irods-amqp/port" $base) }}
+amqp.exchange={{ key (printf "%s/irods-amqp/exchange/name" $base) }}
+amqp.routing.key=data-object.#
+{{ end -}}
