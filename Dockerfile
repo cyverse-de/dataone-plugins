@@ -19,6 +19,7 @@ COPY consul.hcl /
 COPY d1client.properties.tmpl /
 COPY default-event-indexer.properties.tmpl /
 COPY generate-configs.sh /usr/local/bin/
+COPY run-member-node-service.sh /usr/local/bin/
 
 ENV ESVC_REPO_URL=https://raw.github.com/slr71/maven/master/snapshots
 ENV ESVC_ARTIFACT=org.irods:default-event-service-api-impl:4.2.1.0-SNAPSHOT:jar:jar-with-dependencies
