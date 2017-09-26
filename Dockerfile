@@ -17,6 +17,7 @@ COPY repo-service/target/dataone-repo-service-standalone.jar /etc/irods-ext/d1pl
 
 COPY consul.hcl /
 COPY d1client.properties.tmpl /
+COPY default-event-indexer.properties.tmpl /
 COPY generate-configs.sh /usr/local/bin/
 
 ENV ESVC_REPO_URL=https://raw.github.com/slr71/maven/master/snapshots

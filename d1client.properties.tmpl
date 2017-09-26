@@ -30,26 +30,11 @@ irods.dataone.sync.schedule.mon=*
 irods.dataone.sync.schedule.sec=10
 irods.dataone.sync.schedule.wday=?
 irods.dataone.sync.schedule.year=*
-irods.dataone.subject.dc1={{ key (printf "%s/dataone/subject-dc1" $base) }}
-irods.dataone.subject.dc2={{ key (printf "%s/dataone/subject-dc2" $base) }}
-irods.dataone.csubject.cn={{ key (printf "%s/dataone/cn" $base) }}
-irods.dataone.csubject.dc1={{ key (printf "%s/dataone/contact-subject-dc1" $base) }}
-irods.dataone.csubject.dc2={{ key (printf "%s/dataone/contact-subject-dc2" $base) }}
-irods.dataone.subject-string={{ key (printf "%s/dataone/subject-string" $base) }}
-irods.dataone.contact-subject-string={{ key (printf "%s/dataone/contact-subject-string" $base) }}
+irods.dataone.subject-string={{ key (printf "%s/dataone/subject" $base) }}
+irods.dataone.contact-subject-string={{ key (printf "%s/dataone/contact-subject" $base) }}
 irods.dataone.chksum-algorithm=MD5
 irods.dataone.publish_entity_metadata_attr=HandleApproval
 irods.dataone.publish_entity_metadata_value=DataOne
-
-irods.dataone.handle.namingAuthority={{ key (printf "%s/dataone/handle-naming-authority" $base) }}
-irods.dataone.handle.prefix={{ key (printf "%s/dataone/handle-prefix" $base) }}
-irods.dataone.handle.index={{ key (printf "%s/dataone/handle-index" $base) }}
-irods.dataone.handle.privateKeyPath={{ key (printf "%s/dataone/handle-private-key-path" $base) }}
-
-irods.dataone.config.realm={{ key (printf "%s/dataone/config-realm" $base) }}
-irods.dataone.config.smimeEncryptAdminFunctions=false
-irods.dataone.config.privateCertAbsPath=
-irods.dataone.config.publicKeyAbsPath=
 
 irods.dataone.query-page-length={{ key (printf "%s/dataone/query-page-length" $base) }}
 
