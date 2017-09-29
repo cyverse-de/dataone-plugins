@@ -10,3 +10,4 @@ pom.xml.asc
 .hgignore
 .hg/
 /test/org/cyverse/tools.clj
+**/irods.properties

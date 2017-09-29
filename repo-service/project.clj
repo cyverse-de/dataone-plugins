@@ -17,4 +17,8 @@
   :source-paths ["src/clojure"]
   :java-source-paths ["src/java"]
   :javac-options ["-target" "1.8" "-source" "1.8"]
+  :profiles {:repl {:dependencies [[dwr71/jargon-repl "0.0.1-SNAPSHOT"]]
+                    :source-paths ["src/clojure" "repl/clojure"]
+                    :java-source-paths ["src/java" "repl/java"]
+                    :resource-paths ["repl/resources"]}}
   :aot :all)
