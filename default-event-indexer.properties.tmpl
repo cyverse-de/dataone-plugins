@@ -6,6 +6,9 @@ jdbc.driver={{ key (printf "%s/event-db/driver" $base) }}
 hibernate.dialect={{ key (printf "%s/event-db/dialect" $base) }}
 amqp.host={{ key (printf "%s/irods-amqp/host" $base) }}
 amqp.port={{ key (printf "%s/irods-amqp/port" $base) }}
+amqp.vhost={{ key (printf "%s/irods-amqp/vhost" $base) }}
+amqp.username={{ key (printf "%s/irods-amqp/user" $base) }}
+amqp.password={{ key (printf "%s/irods-amqp/password" $base) }}
 amqp.exchange={{ key (printf "%s/irods-amqp/exchange/name" $base) }}
 amqp.routing.key=data-object.#
 {{ end -}}
