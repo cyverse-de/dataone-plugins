@@ -12,6 +12,8 @@ RUN echo "${CONSUL_TEMPLATE_SHA256SUM}  ${CONSUL_TEMPLATE_FILE}" | sha256sum -c 
     && mkdir -p /usr/local/bin \
     && mv consul-template /usr/local/bin/consul-template
 
+COPY setenv.sh /usr/local/tomcat/bin/
+
 COPY pid-service/target/dataone-pid-service-standalone.jar /etc/irods-ext/d1plugins/
 COPY repo-service/target/dataone-repo-service-standalone.jar /etc/irods-ext/d1plugins/
 
