@@ -24,6 +24,10 @@ def buildPlugin(subdir, containerName) {
     sh "docker run --rm --name ${containerName} -v \$(pwd)/${subdir}:/build -w /build clojure:alpine lein uberjar"
 }
 
+def pullDockerImage(repotag) {
+    sh "docker pull ${repotag}"
+}
+
 def buildDockerImage(commit, version, repo) {
     sh """
         docker build --rm \\
@@ -138,6 +142,7 @@ node('docker') {
             lock("docker-push-${dockerRepo}") {
                 milestone 101
                 stage('Docker Build') {
+                    pullDockerImage("discoenv/dataone-base")
                     buildDockerImage(gitCommit, descriptiveVersion, dockerRepo)
                 }
 
