@@ -1,3 +1,9 @@
+;; Normally we wouldn't want to do this, but some of the dependencies we need appear to be available only over
+;; plain HTTP.
+(require 'cemerick.pomegranate.aether)
+(cemerick.pomegranate.aether/register-wagon-factory!
+ "http" #(org.apache.maven.wagon.providers.http.HttpWagon.))
+
 (defproject org.cyverse/dataone-pid-service "0.1.0-SNAPSHOT"
   :description "Plugin for the DataONE member node service."
   :license {:name "BSD"
