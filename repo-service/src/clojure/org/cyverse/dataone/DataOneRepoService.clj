@@ -168,15 +168,13 @@
 (defn -getExposedObjects [this from-date to-date format-id _ offset limit]
   (let [offset (or offset default-offset)
         limit  (or limit default-limit)]
-    (log/warn "offset =" offset)
-    (log/warn "limit =" limit)
     (if (or (nil? (some-> format-id .getValue)) (= (.getValue format-id) default-format))
       (try
         (list-exposed-data-objects this from-date to-date offset limit)
-        (DataOneObjectListResponse. [] offset limit)
         (catch Throwable t
           (log/error t)
-          (throw t))))))
+          (throw t)))
+      (DataOneObjectListResponse. [] 0 0))))
 
 (defn -getLastModifiedDate [this path]
   (get-last-modified-date this path))
