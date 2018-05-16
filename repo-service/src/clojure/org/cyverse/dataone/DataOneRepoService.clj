@@ -167,7 +167,7 @@
 
 (defn -getExposedObjects [this from-date to-date format-id _ offset limit]
   (let [offset (or offset default-offset)
-        limit       (or limit default-limit)]
+        limit  (or limit default-limit)]
     (if (or (nil? (some-> format-id .getValue)) (= (.getValue format-id) default-format))
       (try
         (list-exposed-data-objects this from-date to-date offset limit)
