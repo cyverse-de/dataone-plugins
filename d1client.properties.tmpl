@@ -64,4 +64,10 @@ plugin.factory.repo={{ key (printf "%s/dataone/plugin-repo" $base) }}
 # Custom Configuration Settings
 cyverse.avu.uuid-attr={{ key (printf "%s/dataone/uuid-attr" $base) }}
 cyverse.dataone.root={{ key (printf "%s/dataone/root-dir" $base) }}
+
+# Event Database Connection Settings
+jdbc.url={{ key (printf "%s/event-db/jdbc-uri" $base) }}
+jdbc.user={{ key (printf "%s/event-db/user" $base) }}
+jdbc.password={{ key (printf "%s/event-db/pass" $base) }}
+jdbc.driver={{ key (printf "%s/event-db/driver" $base) }}
 {{ end -}}

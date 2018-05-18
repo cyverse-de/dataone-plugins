@@ -16,23 +16,13 @@ COPY setenv.sh /usr/local/tomcat/bin/
 
 COPY pid-service/target/dataone-pid-service-standalone.jar /etc/irods-ext/d1plugins/
 COPY repo-service/target/dataone-repo-service-standalone.jar /etc/irods-ext/d1plugins/
+COPY event-service/target/dataone-event-service-standalone.jar /etc/irods-ext/d1plugins/
 
 COPY consul.hcl /
 COPY d1client.properties.tmpl /
 COPY default-event-indexer.properties.tmpl /
 COPY generate-configs.sh /usr/local/bin/
 COPY run-member-node-service.sh /usr/local/bin/
-
-ENV ESVC_REPO_URL=https://raw.github.com/slr71/maven/master/snapshots
-ENV ESVC_ARTIFACT=org.irods:default-event-service-api-impl:4.2.1.0-SNAPSHOT:jar:jar-with-dependencies
-ENV ESVC_FILE=/etc/irods-ext/d1plugins/default-event-service-standalone.jar
-
-RUN apk add --update maven \
-    && mvn -q dependency:get \
-           -DrepoUrl=${ESVC_REPO_URL} \
-           -Dartifact=${ESVC_ARTIFACT} \
-           -Dtransitive=false \
-           -Ddest=${ESVC_FILE}
 
 ENV CLJ_VERSION="1.8.0"
 ENV CLJ_FILE="clojure-${CLJ_VERSION}.jar"
