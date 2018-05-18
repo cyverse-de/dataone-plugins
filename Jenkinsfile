@@ -117,6 +117,7 @@ node('docker') {
         // Docker image names.
         pidServiceBuilder = "build-pid-service-${env.BUILD_TAG}"
         repoServiceBuilder = "build-repo-service-${env.BUILD_TAG}"
+        eventServiceBuilder = "build-event-service-${env.BUILD_TAG}"
         imagePusher = "push-mn-service-${env.BUILD_TAG}"
 
         try {
@@ -136,6 +137,11 @@ node('docker') {
                 buildPlugin("repo-service", repoServiceBuilder)
             }
 
+            // Build the event service.
+            stage ('Event Service') {
+                buildPlugin("event-service", eventServiceBuilder)
+            }
+
             // Build the Docker image.
             dockerRepo = "${service.dockerUser}/${service.repo}:${env.BRANCH_NAME}"
             milestone 100
@@ -153,6 +159,7 @@ node('docker') {
         } finally {
             removeContainer(pidServiceBuilder)
             removeContainer(repoServiceBuilder)
+            removeContainer(eventServiceBuilder)
             removeContainer(imagePusher)
             removeImage(dockerRepo)
             recordBuild("${service.repo}-${descriptiveVersion}")
