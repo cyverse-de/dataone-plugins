@@ -109,6 +109,8 @@
   (-> (h/select :*)
       (h/from :event_log)
       (add-query-filters start end event-type pid)
+      (h/offset (when (pos? offset) offset))
+      (h/limit (when (pos? limit) limit))
       sql/format))
 
 (defn- log-entry-from-map [m]
