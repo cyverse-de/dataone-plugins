@@ -1,6 +1,9 @@
 (ns org.cyverse.dataone.DataOneEventService
   (:refer-clojure)
-  (:import [com.mchange.v2.c3p0 ComboPooledDataSource])
+  (:import [com.mchange.v2.c3p0 ComboPooledDataSource]
+           [java.sql Timestamp]
+           [java.util Date]
+           [org.dataone.service.types.v1 Event Identifier Log LogEntry NodeReference Subject])
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as string]
             [clojure.tools.logging :as log]
@@ -41,6 +44,8 @@
 (defn- get-jdbc-driver [publication-context]
   (get-property publication-context "jdbc.driver" default-jdbc-driver))
 
+;; Database connection functions.
+
 (defn- create-db-pool [publication-context]
   {:datasource
    (doto (ComboPooledDataSource.)
@@ -54,30 +59,79 @@
 (defn- db-connection [this]
   (:db-pool (.state this)))
 
-(defn add-query-filters [query start end event-type pid]
+;; Conversion functions.
+
+(defn- timestamp-from-date [date]
+  (when date
+    (Timestamp. (.getTime date))))
+
+(defn- date-from-timestamp [timestamp]
+  (when timestamp
+    (Date. (.getTime timestamp))))
+
+(defn- identifier-from-str [id-str]
+  (when-not (string/blank? id-str)
+    (doto (Identifier.)
+      (.setValue id-str))))
+
+(defn- subject-from-str [subject-str]
+  (when-not (string/blank? subject-str)
+    (doto (Subject.)
+      (.setValue subject-str))))
+
+(defn- event-from-str [event-str]
+  (when-not (string/blank? event-str)
+    (Event/valueOf event-str)))
+
+(defn- node-reference-from-id [node-id]
+  (when-not (string/blank? node-id)
+    (doto (NodeReference.)
+      (.setValue node-id))))
+
+;; Implementation functions for getLogs.
+
+(defn- add-query-filters [query start end event-type pid]
   (-> query
       (h/merge-where (when start [:<= start :date_logged]))
       (h/merge-where (when end [:<= :date_logged end]))
-      (h/merge-where (when event-type [:= :event (.getInternalEvent event-type)]))
+      (h/merge-where (when event-type [:= :event (str event-type)]))
       (h/merge-where (when pid [:= :permanent_id pid]))))
 
-(defn count-logs-query [this start end event-type pid]
+(defn- count-logs-query [this start end event-type pid]
   (-> (h/select :%count.*)
       (h/from :event_log)
       (add-query-filters start end event-type pid)
       sql/format))
 
-(defn get-logs-query [this start end event-type pid offset limit]
+(defn- get-logs-query [this start end event-type pid offset limit]
   (-> (h/select :*)
       (h/from :event_log)
       (add-query-filters start end event-type pid)
       sql/format))
 
+(defn- log-entry-from-map [m]
+  (doto (LogEntry.)
+    (.setEntryId (str (:id m)))
+    (.setIdentifier (identifier-from-str (:permanent_id m)))
+    (.setIpAddress (:ip_address m))
+    (.setUserAgent (:user_agent m))
+    (.setSubject (subject-from-str (:subject m)))
+    (.setEvent (event-from-str (:event m)))
+    (.setDateLogged (date-from-timestamp (:date_logged m)))
+    (.setNodeIdentifier (node-reference-from-id (:node_identifier m)))))
+
 (defn -init [irods-account publication-context]
   [[irods-account publication-context] {:db-pool (create-db-pool publication-context)}])
 
 (defn -getLogs [this start end event-type pid offset limit]
-  (println (count-logs this start end event-type pid))
-  (println (get-logs this start end event-type pid offset limit)))
+  (jdbc/with-db-transaction [tx (db-connection this)]
+    (let [start   (timestamp-from-date start)
+          end     (timestamp-from-date end)
+          total   (:count (first (jdbc/query tx (count-logs-query this start end event-type pid))))
+          results (jdbc/query tx (get-logs-query this start end event-type pid offset limit))]
+      (doto (Log.)
+        (.setStart offset)
+        (.setTotal total)
+        (.setLogEntryList (map log-entry-from-map results))))))
 
 (defn -recordEvent [this event-data])

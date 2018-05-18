@@ -9,7 +9,8 @@
   :license {:name "BSD"
             :url "http://www.cyverse.org/license"}
   :uberjar-name "dataone-event-service-standalone.jar"
-  :dependencies [[com.mchange/c3p0 "0.9.5.2"]
+  :dependencies [[com.impossibl.pgjdbc-ng/pgjdbc-ng "0.7.1"]
+                 [com.mchange/c3p0 "0.9.5.2"]
                  [honeysql "0.9.2"]
                  [org.clojure/clojure "1.8.0"]
                  [org.clojure/java.jdbc "0.7.6"]
