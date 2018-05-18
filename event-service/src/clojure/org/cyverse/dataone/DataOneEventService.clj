@@ -3,7 +3,9 @@
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]
            [java.sql Timestamp]
            [java.util Date]
-           [org.dataone.service.types.v1 Event Identifier Log LogEntry NodeReference Subject])
+           [org.dataone.service.types.v1 Event Identifier Log LogEntry NodeReference Subject]
+           [org.irods.jargon.core.exception JargonRuntimeException]
+           [org.irods.jargon.dataone.events EventsEnum])
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.string :as string]
             [clojure.tools.logging :as log]
@@ -120,18 +122,47 @@
     (.setDateLogged (date-from-timestamp (:date_logged m)))
     (.setNodeIdentifier (node-reference-from-id (:node_identifier m)))))
 
+;; Implementation functions for recordEvent.
+
+(defn- event-data-insertion-map [event-data]
+  {:permanent_id    (.. event-data getId getValue)
+   :irods_path      (.. event-data getIrodsPath)
+   :ip_address      (.. event-data getIpAddress)
+   :user_agent      (.. event-data getUserAgent)
+   :subject         (.. event-data getSubject)
+   :event           (sql/call :cast (str (EventsEnum/valueOfFromDataOne (.. event-data getEvent))) :event_type)
+   :date_logged     :%now
+   :node_identifier (.. event-data getNodeIdentifier)})
+
+(defn- insert-log-entry-statement [event-data]
+  (-> (h/insert-into :event_log)
+      (h/values [(event-data-insertion-map event-data)])
+      sql/format))
+
+;; Method implementations.
+
 (defn -init [irods-account publication-context]
   [[irods-account publication-context] {:db-pool (create-db-pool publication-context)}])
 
 (defn -getLogs [this start end event-type pid offset limit]
-  (jdbc/with-db-transaction [tx (db-connection this)]
-    (let [start   (timestamp-from-date start)
-          end     (timestamp-from-date end)
-          total   (:count (first (jdbc/query tx (count-logs-query this start end event-type pid))))
-          results (jdbc/query tx (get-logs-query this start end event-type pid offset limit))]
-      (doto (Log.)
-        (.setStart offset)
-        (.setTotal total)
-        (.setLogEntryList (map log-entry-from-map results))))))
+  (try
+    (jdbc/with-db-transaction [tx (db-connection this)]
+      (let [start   (timestamp-from-date start)
+            end     (timestamp-from-date end)
+            total   (:count (first (jdbc/query tx (count-logs-query this start end event-type pid))))
+            results (jdbc/query tx (get-logs-query this start end event-type pid offset limit))]
+        (doto (Log.)
+          (.setStart offset)
+          (.setTotal total)
+          (.setLogEntryList (map log-entry-from-map results)))))
+    (catch Exception e
+      (log/error e)
+      (throw (JargonRuntimeException. e)))))
 
-(defn -recordEvent [this event-data])
+(defn -recordEvent [this event-data]
+  (try
+    (jdbc/with-db-transaction [tx (db-connection this)]
+      (jdbc/execute! tx (insert-log-entry-statement event-data)))
+    (catch Exception e
+      (log/error e)
+      (throw (JargonRuntimeException. e)))))
