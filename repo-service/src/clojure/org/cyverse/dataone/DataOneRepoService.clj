@@ -3,7 +3,8 @@
   (:import [org.dataone.service.types.v1 Identifier]
            [org.irods.jargon.core.exception FileNotFoundException]
            [org.irods.jargon.core.pub DataAOHelper]
-           [org.irods.jargon.core.query CollectionAndDataObjectListingEntry$ObjectType GenQueryOrderByField$OrderByType
+           [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
+            CollectionAndDataObjectListingEntry$ObjectType GenQueryOrderByField$OrderByType
             IRODSGenQueryBuilder QueryConditionOperators RodsGenQueryEnum]
            [org.irods.jargon.dataone.model DataOneObjectListResponse FileDataOneObject]
            [java.util Date])
@@ -22,6 +23,7 @@
 (def ^:private default-root "/iplant/home/shared/commons_repo/curated")
 (def ^:private default-page-length "50")
 (def ^:private default-format "application/octet-stream")
+(def ^:private default-format-id-attr "ipc-d1-format-id")
 (def ^:private default-offset 0)
 (def ^:private default-limit 500)
 
@@ -43,6 +45,9 @@
   (-> (get-property this "irods.dataone.query-page-length" default-page-length)
       Integer/parseInt))
 
+(defn- get-format-id-attr [this]
+  (get-property this "cyverse.dataone.format-id-attr" default-format-id-attr))
+
 ;; General convenience functions.
 
 (defn- identifier-from-string [s]
@@ -56,6 +61,10 @@
 
 (defn- get-collection-ao [this]
   (.getCollectionAO (.. this getPublicationContext getIrodsAccessObjectFactory)
+                    (.getIrodsAccount this)))
+
+(defn- get-data-object-ao [this]
+  (.getDataObjectAO (.. this getPublicationContext getIrodsAccessObjectFactory)
                     (.getIrodsAccount this)))
 
 (defn- get-file-system-ao [this]
@@ -103,6 +112,17 @@
 
 (defn- add-replica-number-condition [builder operator value]
   (.addConditionAsGenQueryField builder RodsGenQueryEnum/COL_DATA_REPL_NUM operator value))
+
+(defn- is-file?
+  ([this path]
+   (is-file? (.getObjStat (get-file-system-ao this) path)))
+  ([stat]
+   (= (.getObjectType stat) (CollectionAndDataObjectListingEntry$ObjectType/DATA_OBJECT))))
+
+(defn- avu-query [attr]
+  [(AVUQueryElement/instanceForValueQuery AVUQueryElement$AVUQueryPart/ATTRIBUTE
+                                         QueryConditionOperators/EQUAL
+                                         attr)])
 
 ;; Functions to retrieve the list of exposed identifiers.
 
@@ -152,10 +172,22 @@
 (defn- get-last-modified-date [this path]
   (try
     (let [stat (.getObjStat (get-file-system-ao this) path)]
-      (when (= (.getObjectType stat)
-               (CollectionAndDataObjectListingEntry$ObjectType/DATA_OBJECT))
+      (when (is-file? stat)
         (.getModifiedAt stat)))
     (catch FileNotFoundException e nil)))
+
+;; Format ID functions.
+
+(defn- get-data-object-format [this path]
+  (let [data-object-ao (get-data-object-ao this)]
+    (some-> (.findMetadataValuesForDataObjectUsingAVUQuery data-object-ao (avu-query (get-format-id-attr this)) path)
+            first
+            (.getAvuValue))))
+
+(defn- get-format [this path]
+  (if (is-file? this path)
+    (get-data-object-format this path)
+    default-format))
 
 ;; Class method implementations.
 
@@ -179,5 +211,5 @@
 (defn -getLastModifiedDate [this path]
   (get-last-modified-date this path))
 
-(defn -getFormat [_ _]
-  default-format)
+(defn -getFormat [this path]
+  (or (get-format this path) default-format))
