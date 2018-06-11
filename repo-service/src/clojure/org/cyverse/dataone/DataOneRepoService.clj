@@ -213,9 +213,11 @@
     (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index)))
 
 (defn- list-exposed-data-objects-with-format [this from-date to-date format start-index count]
-  (let [inclusions (list-ids-with-format this from-date to-date format)
-        query      (build-data-object-listing-query this from-date to-date count {:inclusions inclusions})]
-    (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index)))
+  (let [inclusions (list-ids-with-format this from-date to-date format)]
+    (if (seq inclusions)
+      (let [query (build-data-object-listing-query this from-date to-date count {:inclusions inclusions})]
+        (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index))
+      (DataOneObjectListResponse. [] 0 0))))
 
 (defn- list-exposed-data-objects
   ([this from-date to-date start-index count]
