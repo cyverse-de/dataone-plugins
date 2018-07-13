@@ -172,7 +172,7 @@
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
       (add-exclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str exclusions))
       (add-inclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str inclusions))
-      (.exportIRODSQueryFromBuilder limit)))
+      (.exportIRODSQueryFromBuilder (max limit (int 1)))))
 
 (defn- file-data-one-object-from-row [this row]
   (FileDataOneObject.
@@ -203,26 +203,28 @@
   (let [rows (lazy-gen-query this 0 (build-paths-with-format-listing-query this from-date to-date format))]
     (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
 
-(defn- data-one-object-list-response-from-result-set [this rs start-index]
-  (let [elements (mapv (partial file-data-one-object-from-row this) (.getResults rs))]
-    (DataOneObjectListResponse. elements (.getTotalRecords rs) start-index)))
+(defn- data-one-object-list-response-from-result-set [this rs start-index count]
+  (if (= count 0)
+    (DataOneObjectListResponse. [] (.getTotalRecords rs) start-index)
+    (let [elements (mapv (partial file-data-one-object-from-row this) (.getResults rs))]
+      (DataOneObjectListResponse. elements (.getTotalRecords rs) start-index))))
 
 (defn- list-default-format-data-objects [this from-date to-date start-index count]
   (let [exclusions (list-custom-format-ids this from-date to-date)
         query      (build-data-object-listing-query this from-date to-date count {:exclusions exclusions})]
-    (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index)))
+    (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index count)))
 
 (defn- list-exposed-data-objects-with-format [this from-date to-date format start-index count]
   (let [inclusions (list-ids-with-format this from-date to-date format)]
     (if (seq inclusions)
       (let [query (build-data-object-listing-query this from-date to-date count {:inclusions inclusions})]
-        (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index))
+        (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index count))
       (DataOneObjectListResponse. [] 0 0))))
 
 (defn- list-exposed-data-objects
   ([this from-date to-date start-index count]
    (let [rs (gen-query this start-index (build-data-object-listing-query this from-date to-date count))]
-     (data-one-object-list-response-from-result-set this rs start-index)))
+     (data-one-object-list-response-from-result-set this rs start-index count)))
   ([this from-date to-date format-id start-index count]
    (condp = (some-> format-id .getValue)
      nil            (list-exposed-data-objects this from-date to-date start-index count)
