@@ -26,6 +26,7 @@
 (def ^:private default-format-id-attr "ipc-d1-format-id")
 (def ^:private default-offset 0)
 (def ^:private default-limit 500)
+(def ^:private max-limit 500)
 
 ;; Functions to retrieve configuration settings.
 
@@ -263,7 +264,7 @@
 
 (defn -getExposedObjects [this from-date to-date format-id _ offset limit]
   (let [offset (or offset default-offset)
-        limit  (or limit default-limit)]
+        limit  (min (or limit default-limit) max-limit)]
     (try
       (list-exposed-data-objects this from-date to-date format-id offset limit)
       (catch Throwable t
