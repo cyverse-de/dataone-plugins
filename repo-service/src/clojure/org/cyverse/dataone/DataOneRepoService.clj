@@ -168,7 +168,7 @@
 
 ;; Functions to retrieve the list of exposed data objects.
 
-(defn- build-base-data-object-listing-query [this from-date to-date]
+(defn- build-base-data-object-listing-query [this from-date to-date root]
   (-> (IRODSGenQueryBuilder. true false true nil)
       add-data-object-selects
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_NAME)
@@ -176,14 +176,14 @@
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_UNITS)
       (add-modify-time-condition QueryConditionOperators/GREATER_THAN_OR_EQUAL_TO from-date)
       (add-modify-time-condition QueryConditionOperators/LESS_THAN_OR_EQUAL_TO to-date)
-      (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
+      (add-coll-name-condition QueryConditionOperators/LIKE (str root "%"))
       (add-replica-number-condition QueryConditionOperators/EQUAL 0)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_COLL_NAME GenQueryOrderByField$OrderByType/ASC)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_DATA_NAME GenQueryOrderByField$OrderByType/ASC)))
 
 ;; FIXME: inclusions and exclusions won't work if the results can span multiple zones.
 (defn- build-data-object-listing-query [this from-date to-date limit & [{:keys [exclusions inclusions]}]]
-  (-> (build-base-data-object-listing-query this from-date to-date)
+  (-> (build-base-data-object-listing-query this from-date to-date (get-root this))
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
       (add-exclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str exclusions))
       (add-inclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str inclusions))
@@ -197,26 +197,30 @@
    (epoch-to-date (.getColumn row (.getName RodsGenQueryEnum/COL_D_MODIFY_TIME)))
    (DataAOHelper/buildDomainFromResultSetRow row)))
 
-(defn- build-custom-format-listing-query [this from-date to-date]
-  (-> (build-base-data-object-listing-query this from-date to-date)
+(defn- build-custom-format-listing-query [this from-date to-date root]
+  (-> (build-base-data-object-listing-query this from-date to-date root)
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-format-id-attr this))
       (.exportIRODSQueryFromBuilder (get-query-page-length this))))
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-custom-format-ids [this from-date to-date]
-  (let [rows (lazy-gen-query this (build-custom-format-listing-query this from-date to-date))]
-    (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
+  (->> (get-roots this)
+       (map #(build-custom-format-listing-query this from-date to-date %))
+       (lazy-gen-queries this)
+       (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)))))
 
-(defn- build-paths-with-format-listing-query [this from-date to-date format]
-  (-> (build-base-data-object-listing-query this from-date to-date)
+(defn- build-paths-with-format-listing-query [this from-date to-date format root]
+  (-> (build-base-data-object-listing-query this from-date to-date root)
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-format-id-attr this))
       (add-attribute-value-condition QueryConditionOperators/EQUAL format)
       (.exportIRODSQueryFromBuilder (get-query-page-length this))))
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-ids-with-format [this from-date to-date format]
-  (let [rows (lazy-gen-query this (build-paths-with-format-listing-query this from-date to-date format))]
-    (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
+  (->> (get-roots this)
+       (map #(build-paths-with-format-listing-query this from-date to-date format %))
+       (lazy-gen-queries this)
+       (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)))))
 
 (defn- data-one-object-list-response-from-result-set [this rs start-index count]
   (if (= count 0)
