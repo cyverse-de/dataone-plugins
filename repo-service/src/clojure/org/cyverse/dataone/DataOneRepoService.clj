@@ -88,11 +88,11 @@
     (do (.closeResults executor rs) [rs])))
 
 (defn- lazy-gen-query
-  "Performs a general query and returns a lazy sequence of results."
-  [this offset query]
+  "Performs a general query and returns a lazy sequence of results. Offsets are not supported yet."
+  [this query]
   (let [executor (get-gen-query-executor this)]
     (mapcat (fn [rs] (.getResults rs))
-            (lazy-rs executor (.executeIRODSQuery executor query (or offset default-offset))))))
+            (lazy-rs executor (.executeIRODSQuery executor query default-offset)))))
 
 (defn- gen-query
   "Performs a general query and returns the result set. This result set will be closed automatically."
@@ -154,7 +154,7 @@
 
 (defn- list-exposed-identifiers [this]
   (mapv (fn [row] (identifier-from-string (.getColumn row 0)))
-        (lazy-gen-query this 0 (build-id-query this))))
+        (lazy-gen-query this (build-id-query this))))
 
 ;; Functions to retrieve the list of exposed data objects.
 
@@ -194,7 +194,7 @@
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-custom-format-ids [this from-date to-date]
-  (let [rows (lazy-gen-query this 0 (build-custom-format-listing-query this from-date to-date))]
+  (let [rows (lazy-gen-query this (build-custom-format-listing-query this from-date to-date))]
     (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
 
 (defn- build-paths-with-format-listing-query [this from-date to-date format]
@@ -205,7 +205,7 @@
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-ids-with-format [this from-date to-date format]
-  (let [rows (lazy-gen-query this 0 (build-paths-with-format-listing-query this from-date to-date format))]
+  (let [rows (lazy-gen-query this (build-paths-with-format-listing-query this from-date to-date format))]
     (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
 
 (defn- data-one-object-list-response-from-result-set [this rs start-index count]
