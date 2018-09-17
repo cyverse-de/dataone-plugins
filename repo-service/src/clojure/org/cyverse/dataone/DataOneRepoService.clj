@@ -21,6 +21,7 @@
 
 (def ^:private default-uuid-attr "ipc_UUID")
 (def ^:private default-root "/iplant/home/shared/commons_repo/curated")
+(def ^:private default-metadata-root "/iplant/home/shared/commons_repo/curated_metadata")
 (def ^:private default-page-length "50")
 (def ^:private default-format "application/octet-stream")
 (def ^:private default-format-id-attr "ipc-d1-format-id")
@@ -41,6 +42,9 @@
 
 (defn- get-root [this]
   (get-property this "cyverse.dataone.root" default-root))
+
+(defn- get-metadata-root [this]
+  (get-property this "cyverse.dataone.metadata-root" default-metadata-root))
 
 (defn- get-query-page-length [this]
   (-> (get-property this "irods.dataone.query-page-length" default-page-length)
