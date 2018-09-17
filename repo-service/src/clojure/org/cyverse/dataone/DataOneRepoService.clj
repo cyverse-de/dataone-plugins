@@ -94,6 +94,11 @@
     (mapcat (fn [rs] (.getResults rs))
             (lazy-rs executor (.executeIRODSQuery executor query default-offset)))))
 
+(defn- lazy-gen-queries
+  "Performs multiple general queries and returns a lazy sequence of results. Offsets are not supported yet."
+  [this queries]
+  (mapcat (fn [query] (lazy-gen-query this query)) queries))
+
 (defn- gen-query
   "Performs a general query and returns the result set. This result set will be closed automatically."
   [this offset query]
