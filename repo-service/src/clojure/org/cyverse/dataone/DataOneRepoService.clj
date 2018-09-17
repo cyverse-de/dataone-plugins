@@ -152,17 +152,19 @@
 
 ;; Functions to retrieve the list of exposed identifiers.
 
-(defn- build-id-query [this]
+(defn- build-id-query [this root]
   (-> (IRODSGenQueryBuilder. true false true nil)
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE GenQueryOrderByField$OrderByType/ASC)
-      (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
+      (add-coll-name-condition QueryConditionOperators/LIKE (str root "%"))
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
       (.exportIRODSQueryFromBuilder (get-query-page-length this))))
 
 (defn- list-exposed-identifiers [this]
-  (mapv (fn [row] (identifier-from-string (.getColumn row 0)))
-        (lazy-gen-query this (build-id-query this))))
+  (->> (get-roots this)
+       (map (fn [root] (build-id-query this root)))
+       (lazy-gen-queries this)
+       (mapv (fn [row] (identifier-from-string (.getColumn row 0))))))
 
 ;; Functions to retrieve the list of exposed data objects.
 
