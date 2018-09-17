@@ -46,6 +46,9 @@
 (defn- get-metadata-root [this]
   (get-property this "cyverse.dataone.metadata-root" default-metadata-root))
 
+(defn- get-roots [this]
+  (sort ((juxt get-root get-metadata-root) this)))
+
 (defn- get-query-page-length [this]
   (-> (get-property this "irods.dataone.query-page-length" default-page-length)
       Integer/parseInt))
