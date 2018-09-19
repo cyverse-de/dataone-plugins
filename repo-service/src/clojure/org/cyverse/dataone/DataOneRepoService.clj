@@ -200,7 +200,7 @@
       (getResults [_]
         (mapcat #(vec (.getResults %)) rss))
 
-      ;; This implementation adds the total records from all queries into a single collection.
+      ;; This implementation adds the total records from all queries into a grand total.
       (getTotalRecords [_]
         (reduce #(+ %1 (.getTotalRecords %2)) 0 rss))
 
