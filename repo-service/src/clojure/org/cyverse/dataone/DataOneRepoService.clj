@@ -92,19 +92,19 @@
     (do (.closeResults executor rs) [rs])))
 
 (defn- lazy-gen-query
-  "Performs a general query and returns a lazy sequence of results. Offsets are not supported yet."
+  "Performs a generic query and returns a lazy sequence of results. Offsets are not supported yet."
   [this query]
   (let [executor (get-gen-query-executor this)]
     (mapcat (fn [rs] (.getResults rs))
             (lazy-rs executor (.executeIRODSQuery executor query default-offset)))))
 
 (defn- lazy-gen-queries
-  "Performs multiple general queries and returns a lazy sequence of results. Offsets are not supported yet."
+  "Performs multiple generic queries and returns a lazy sequence of results. Offsets are not supported yet."
   [this queries]
   (mapcat (fn [query] (lazy-gen-query this query)) queries))
 
 (defn- gen-query
-  "Performs a general query and returns the result set. This result set will be closed automatically."
+  "Performs a generic query and returns the result set. This result set will be closed automatically."
   [this offset query]
   (.executeIRODSQueryAndCloseResult (get-gen-query-executor this) query offset))
 
@@ -157,7 +157,7 @@
           (pos? (count (.getResults rs))))))))
 
 (defn- run-queries
-  "Runs multiple general queries and returns a sequence of result sets. This is a workaround for iRODS general
+  "Runs multiple generic queries and returns a sequence of result sets. This is a workaround for iRODS generic
    queries not supporting `or` conditions. The columns returned by all queries passed to this function must be
    identical."
   [this query-builders offset limit]
@@ -175,7 +175,7 @@
       acc)))
 
 (defn- gen-queries
-  "Performs multiple general queries and returns a combined result set. The result set will be closed automatically.
+  "Performs multiple generic queries and returns a combined result set. The result set will be closed automatically.
    The columns returned by all queries passed to this function must be identical."
   [this query-builders offset limit]
   (let [rss (run-queries this query-builders offset limit)]
