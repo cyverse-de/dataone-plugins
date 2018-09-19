@@ -112,9 +112,11 @@
   "Jargon throws an exception if we run a query with a limit of zero, but we need to be able to do that in order
    to treat the results of multiple queries as a single result."
   [this query-builder offset limit]
-  (let [executor (get-gen-query-executor this)
-        query    (.exportIRODSQueryFromBuilder query-builder (max limit 1))
-        rs       (.executeIRODSQueryAndCloseResult executor query offset)]
+  (let [executor       (get-gen-query-executor this)
+        query          (.exportIRODSQueryFromBuilder query-builder (max limit 1))
+        rs             (.executeIRODSQueryAndCloseResult executor query offset)
+        need-count-rs? (and (pos? offset) (not (pos? (.getTotalRecords rs))))
+        count-rs       (if need-count-rs? (.executeIRODSQueryAndCloseResult executor query (int 0)) rs)]
     (reify
       org.irods.jargon.core.query.IRODSQueryResultSetInterface
 
@@ -141,13 +143,15 @@
           (vec (.getResults rs))
           []))
 
-      ;; It's sufficient to return the total number of records from the original result set.
+      ;; Generic queries don't return the total number of matching records if the offset is greater than the total
+      ;; number of matching records. The workaround that we have for this is to perform a second query with an offset
+      ;; of zero any time the offset is positive and the total record count isn't.
       (getTotalRecords [_]
-        (.getTotalRecords rs))
+        (.getTotalRecords count-rs))
 
       ;; If the limit is zero then the original result set's isHasMoreRecords method will still return a false
       ;; value if there was exactly one more matching record.
-      (isHasMoreRecords [+]
+      (isHasMoreRecords [_]
         (if (pos? limit)
           (.isHasMoreRecords rs)
           (pos? (count (.getResults rs))))))))
