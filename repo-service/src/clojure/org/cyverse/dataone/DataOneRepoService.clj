@@ -118,7 +118,7 @@
         need-count-rs? (and (pos? offset) (not (pos? (.getTotalRecords rs))))
         count-rs       (if need-count-rs? (.executeIRODSQueryAndCloseResult executor query (int 0)) rs)]
     (reify
-      org.irods.jargon.core.query.IRODSQueryResultSetInterface
+      IRODSQueryResultSetInterface
 
       ;; It's sufficient to return the column names from the original result set.
       (getColumnNames [_]
@@ -131,7 +131,7 @@
         (when (pos? limit)
           (try
             (.getFirstResult rs)
-            (catch org.irods.jargon.core.exception.DataNotFoundException _ nil))))
+            (catch DataNotFoundException _ nil))))
 
       ;; It's sufficient to return the number of columns from the original result set.
       (getNumberOfResultColumns [_]
@@ -180,7 +180,7 @@
   [this query-builders offset limit]
   (let [rss (run-queries this query-builders offset limit)]
     (reify
-      org.irods.jargon.core.query.IRODSQueryResultSetInterface
+      IRODSQueryResultSetInterface
 
       ;; Since we're assuming that all queries return the same set of columns, this method only returns the column
       ;; names of the first result set.
