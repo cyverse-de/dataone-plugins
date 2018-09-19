@@ -194,7 +194,7 @@
       ;; Since we're assuming that all queries return the same set of columns, this method only returns the number of
       ;; columns in the first result set.
       (getNumberOfResultColumns [_]
-        (.getNumberOfResultColumns [_]))
+        (.getNumberOfResultColumns (first rss)))
 
       ;; This implementation combines all of the results into a single collection.
       (getResults [_]
