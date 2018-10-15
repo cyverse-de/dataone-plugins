@@ -5,7 +5,8 @@
            [org.irods.jargon.core.pub DataAOHelper]
            [org.irods.jargon.core.query AVUQueryElement AVUQueryElement$AVUQueryPart
             CollectionAndDataObjectListingEntry$ObjectType GenQueryOrderByField$OrderByType
-            IRODSGenQueryBuilder QueryConditionOperators RodsGenQueryEnum]
+            IRODSGenQueryBuilder IRODSQueryResultSetInterface QueryConditionOperators RodsGenQueryEnum]
+           [org.irods.jargon.core.exception DataNotFoundException]
            [org.irods.jargon.dataone.model DataOneObjectListResponse FileDataOneObject]
            [java.util Date])
   (:require [clojure.string :as string]
@@ -21,6 +22,7 @@
 
 (def ^:private default-uuid-attr "ipc_UUID")
 (def ^:private default-root "/iplant/home/shared/commons_repo/curated")
+(def ^:private default-metadata-root "/iplant/home/shared/commons_repo/curated_metadata")
 (def ^:private default-page-length "50")
 (def ^:private default-format "application/octet-stream")
 (def ^:private default-format-id-attr "ipc-d1-format-id")
@@ -41,6 +43,12 @@
 
 (defn- get-root [this]
   (get-property this "cyverse.dataone.root" default-root))
+
+(defn- get-metadata-root [this]
+  (get-property this "cyverse.dataone.metadata-root" default-metadata-root))
+
+(defn- get-roots [this]
+  (sort ((juxt get-root get-metadata-root) this)))
 
 (defn- get-query-page-length [this]
   (-> (get-property this "irods.dataone.query-page-length" default-page-length)
@@ -84,16 +92,121 @@
     (do (.closeResults executor rs) [rs])))
 
 (defn- lazy-gen-query
-  "Performs a general query and returns a lazy sequence of results."
-  [this offset query]
+  "Performs a generic query and returns a lazy sequence of results. Offsets are not supported yet."
+  [this query]
   (let [executor (get-gen-query-executor this)]
     (mapcat (fn [rs] (.getResults rs))
-            (lazy-rs executor (.executeIRODSQuery executor query (or offset default-offset))))))
+            (lazy-rs executor (.executeIRODSQuery executor query default-offset)))))
+
+(defn- lazy-gen-queries
+  "Performs multiple generic queries and returns a lazy sequence of results. Offsets are not supported yet."
+  [this queries]
+  (mapcat (fn [query] (lazy-gen-query this query)) queries))
 
 (defn- gen-query
-  "Performs a general query and returns the result set. This result set will be closed automatically."
+  "Performs a generic query and returns the result set. This result set will be closed automatically."
   [this offset query]
   (.executeIRODSQueryAndCloseResult (get-gen-query-executor this) query offset))
+
+(defn- run-query
+  "Jargon throws an exception if we run a query with a limit of zero, but we need to be able to do that in order
+   to treat the results of multiple queries as a single result."
+  [this query-builder offset limit]
+  (let [executor       (get-gen-query-executor this)
+        query          (.exportIRODSQueryFromBuilder query-builder (max limit 1))
+        rs             (.executeIRODSQueryAndCloseResult executor query offset)
+        need-count-rs? (and (pos? offset) (not (pos? (.getTotalRecords rs))))
+        count-rs       (if need-count-rs? (.executeIRODSQueryAndCloseResult executor query (int 0)) rs)]
+    (reify
+      IRODSQueryResultSetInterface
+
+      ;; It's sufficient to return the column names from the original result set.
+      (getColumnNames [_]
+        (.getColumnNames rs))
+
+      ;; We can only get the first result if the limit is greater than zero. Also, Jargon throws an exception
+      ;; if this method is called when there are no results. In our use case, it's more convenient to return
+      ;; nil if there are no results to return.
+      (getFirstResult [_]
+        (when (pos? limit)
+          (try
+            (.getFirstResult rs)
+            (catch DataNotFoundException _ nil))))
+
+      ;; It's sufficient to return the number of columns from the original result set.
+      (getNumberOfResultColumns [_]
+        (.getNumberOfResultColumns rs))
+
+      ;; The set of results should be empty if the limit is zero.
+      (getResults [_]
+        (if (pos? limit)
+          (vec (.getResults rs))
+          []))
+
+      ;; Generic queries don't return the total number of matching records if the offset is greater than the total
+      ;; number of matching records. The workaround that we have for this is to perform a second query with an offset
+      ;; of zero any time the offset is positive and the total record count isn't.
+      (getTotalRecords [_]
+        (.getTotalRecords count-rs))
+
+      ;; If the limit is zero then the original result set's isHasMoreRecords method will still return a false
+      ;; value if there was exactly one more matching record.
+      (isHasMoreRecords [_]
+        (if (pos? limit)
+          (.isHasMoreRecords rs)
+          (pos? (count (.getResults rs))))))))
+
+(defn- run-queries
+  "Runs multiple generic queries and returns a sequence of result sets. This is a workaround for iRODS generic
+   queries not supporting `or` conditions. The columns returned by all queries passed to this function must be
+   identical."
+  [this query-builders offset limit]
+  (loop [[builder & builders] query-builders
+         offset               (max offset 0)
+         limit                (max limit 0)
+         acc                  []]
+    (if builder
+      (let [rs    (run-query this builder offset limit)
+            size  (count (.getResults rs))
+            total (.getTotalRecords rs)]
+        (if (= size 0)
+          (recur builders (max (- offset total) 0) limit (conj acc rs))
+          (recur builders 0 (max (- limit size) 0) (conj acc rs))))
+      acc)))
+
+(defn- gen-queries
+  "Performs multiple generic queries and returns a combined result set. The result set will be closed automatically.
+   The columns returned by all queries passed to this function must be identical."
+  [this query-builders offset limit]
+  (let [rss (run-queries this query-builders offset limit)]
+    (reify
+      IRODSQueryResultSetInterface
+
+      ;; Since we're assuming that all queries return the same set of columns, this method only returns the column
+      ;; names of the first result set.
+      (getColumnNames [_]
+        (.getColumnNames (first rss)))
+
+      ;; The first result set may not contain any records, so it's necessary to check every result set.
+      (getFirstResult [this]
+        (first (.getResults this)))
+
+      ;; Since we're assuming that all queries return the same set of columns, this method only returns the number of
+      ;; columns in the first result set.
+      (getNumberOfResultColumns [_]
+        (.getNumberOfResultColumns (first rss)))
+
+      ;; This implementation combines all of the results into a single collection.
+      (getResults [_]
+        (mapcat #(vec (.getResults %)) rss))
+
+      ;; This implementation adds the total records from all queries into a grand total.
+      (getTotalRecords [_]
+        (reduce #(+ %1 (.getTotalRecords %2)) 0 rss))
+
+      ;; There are more records to return if any result set has more records to return.
+      (isHasMoreRecords [_]
+        (some #(.isHasMoreRecords rss))))))
 
 (defn- add-data-object-selects [builder]
   (DataAOHelper/addDataObjectSelectsToBuilder builder)
@@ -140,17 +253,29 @@
 
 ;; Functions to retrieve the list of exposed identifiers.
 
-(defn- build-id-query [this]
+(defn- build-base-id-query [this]
   (-> (IRODSGenQueryBuilder. true false true nil)
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_META_DATA_ATTR_VALUE GenQueryOrderByField$OrderByType/ASC)
-      (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
       (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
       (.exportIRODSQueryFromBuilder (get-query-page-length this))))
 
+;; I haven't quite figured out why yet, but the second query doesn't return the expected results when the first query is
+;; included in the list of queries. We don't expect to have files directly in the root directory at this time, so checks
+;; for them will be omitted.
+(defn- build-base-id-queries [this root]
+  [#_(-> (build-base-id-query this)
+         (add-coll-name-condition QueryConditionOperators/EQUAL root))
+   (-> (build-base-id-query this)
+       (add-coll-name-condition QueryConditionOperators/LIKE (str root "/%")))])
+
+(defn- build-id-queries [this]
+  (mapcat #(build-base-id-queries this %) (get-roots this)))
+
 (defn- list-exposed-identifiers [this]
-  (mapv (fn [row] (identifier-from-string (.getColumn row 0)))
-        (lazy-gen-query this 0 (build-id-query this))))
+  (->> (build-id-queries this)
+       (lazy-gen-queries this)
+       (mapv (fn [row] (identifier-from-string (.getColumn row 0))))))
 
 ;; Functions to retrieve the list of exposed data objects.
 
@@ -162,18 +287,32 @@
       (.addSelectAsGenQueryValue RodsGenQueryEnum/COL_META_DATA_ATTR_UNITS)
       (add-modify-time-condition QueryConditionOperators/GREATER_THAN_OR_EQUAL_TO from-date)
       (add-modify-time-condition QueryConditionOperators/LESS_THAN_OR_EQUAL_TO to-date)
-      (add-coll-name-condition QueryConditionOperators/LIKE (str (get-root this) "%"))
       (add-replica-number-condition QueryConditionOperators/EQUAL 0)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_COLL_NAME GenQueryOrderByField$OrderByType/ASC)
       (.addOrderByGenQueryField RodsGenQueryEnum/COL_DATA_NAME GenQueryOrderByField$OrderByType/ASC)))
 
+;; I haven't quite figured out why yet, but the second query doesn't return the expected results when the first query is
+;; included in the list of queries. We don't expect to have files directly in the root directory at this time, so checks
+;; for them will be omitted.
+(defn- build-base-data-object-listing-queries* [this from-date to-date root]
+  [#_(-> (build-base-data-object-listing-query this from-date to-date)
+         (add-coll-name-condition QueryConditionOperators/EQUAL root))
+   (-> (build-base-data-object-listing-query this from-date to-date)
+       (add-coll-name-condition QueryConditionOperators/LIKE (str root "/%")))])
+
+(defn- build-base-data-object-listing-queries [this from-date to-date]
+  (mapcat #(build-base-data-object-listing-queries* this from-date to-date %) (get-roots this)))
+
 ;; FIXME: inclusions and exclusions won't work if the results can span multiple zones.
-(defn- build-data-object-listing-query [this from-date to-date limit & [{:keys [exclusions inclusions]}]]
-  (-> (build-base-data-object-listing-query this from-date to-date)
-      (add-attribute-name-condition QueryConditionOperators/EQUAL (get-uuid-attr this))
-      (add-exclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str exclusions))
-      (add-inclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str inclusions))
-      (.exportIRODSQueryFromBuilder (max limit (int 1)))))
+(defn- build-data-object-listing-queries
+  "Builds and returns a query to list data objects. Note that the query builder is returned rather
+   than the query itself. This allows limits to be determined dynamically when multiple queries are
+   combined."
+  [this from-date to-date & [{:keys [exclusions inclusions]}]]
+  (for [builder (build-base-data-object-listing-queries this from-date to-date)]
+    (-> (add-attribute-name-condition builder QueryConditionOperators/EQUAL (get-uuid-attr this))
+        (add-exclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str exclusions))
+        (add-inclusions RodsGenQueryEnum/COL_D_DATA_ID (mapv str inclusions)))))
 
 (defn- file-data-one-object-from-row [this row]
   (FileDataOneObject.
@@ -183,26 +322,28 @@
    (epoch-to-date (.getColumn row (.getName RodsGenQueryEnum/COL_D_MODIFY_TIME)))
    (DataAOHelper/buildDomainFromResultSetRow row)))
 
-(defn- build-custom-format-listing-query [this from-date to-date]
-  (-> (build-base-data-object-listing-query this from-date to-date)
-      (add-attribute-name-condition QueryConditionOperators/EQUAL (get-format-id-attr this))
-      (.exportIRODSQueryFromBuilder (get-query-page-length this))))
+(defn- build-custom-format-listing-queries [this from-date to-date]
+  (for [builder (build-base-data-object-listing-queries this from-date to-date)]
+    (-> (add-attribute-name-condition builder QueryConditionOperators/EQUAL (get-format-id-attr this))
+        (.exportIRODSQueryFromBuilder (get-query-page-length this)))))
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-custom-format-ids [this from-date to-date]
-  (let [rows (lazy-gen-query this 0 (build-custom-format-listing-query this from-date to-date))]
-    (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
+  (->> (build-custom-format-listing-queries this from-date to-date)
+       (lazy-gen-queries this)
+       (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)))))
 
-(defn- build-paths-with-format-listing-query [this from-date to-date format]
-  (-> (build-base-data-object-listing-query this from-date to-date)
-      (add-attribute-name-condition QueryConditionOperators/EQUAL (get-format-id-attr this))
-      (add-attribute-value-condition QueryConditionOperators/EQUAL format)
-      (.exportIRODSQueryFromBuilder (get-query-page-length this))))
+(defn- build-paths-with-format-listing-queries [this from-date to-date format]
+  (for [builder (build-base-data-object-listing-queries this from-date to-date)]
+    (-> (add-attribute-name-condition builder QueryConditionOperators/EQUAL (get-format-id-attr this))
+        (add-attribute-value-condition QueryConditionOperators/EQUAL format)
+        (.exportIRODSQueryFromBuilder (get-query-page-length this)))))
 
 ;; FIXME: this won't work if the results can span multiple zones.
 (defn- list-ids-with-format [this from-date to-date format]
-  (let [rows (lazy-gen-query this 0 (build-paths-with-format-listing-query this from-date to-date format))]
-    (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)) rows)))
+  (->> (build-paths-with-format-listing-queries this from-date to-date format)
+       (lazy-gen-queries this)
+       (mapv #(.getId (DataAOHelper/buildDomainFromResultSetRow %)))))
 
 (defn- data-one-object-list-response-from-result-set [this rs start-index count]
   (if (= count 0)
@@ -211,20 +352,23 @@
       (DataOneObjectListResponse. elements (.getTotalRecords rs) start-index))))
 
 (defn- list-default-format-data-objects [this from-date to-date start-index count]
-  (let [exclusions (list-custom-format-ids this from-date to-date)
-        query      (build-data-object-listing-query this from-date to-date count {:exclusions exclusions})]
-    (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index count)))
+  (let [exclusions     (list-custom-format-ids this from-date to-date)
+        query-builders (build-data-object-listing-queries this from-date to-date {:exclusions exclusions})
+        rs             (gen-queries this query-builders start-index count)]
+    (data-one-object-list-response-from-result-set this rs start-index count)))
 
 (defn- list-exposed-data-objects-with-format [this from-date to-date format start-index count]
   (let [inclusions (list-ids-with-format this from-date to-date format)]
     (if (seq inclusions)
-      (let [query (build-data-object-listing-query this from-date to-date count {:inclusions inclusions})]
-        (data-one-object-list-response-from-result-set this (gen-query this start-index query) start-index count))
+      (let [query-builders (build-data-object-listing-queries this from-date to-date {:inclusions inclusions})
+            rs             (gen-queries this query-builders start-index count)]
+        (data-one-object-list-response-from-result-set this rs start-index count))
       (DataOneObjectListResponse. [] 0 0))))
 
 (defn- list-exposed-data-objects
   ([this from-date to-date start-index count]
-   (let [rs (gen-query this start-index (build-data-object-listing-query this from-date to-date count))]
+   (let [query-builders (build-data-object-listing-queries this from-date to-date)
+         rs             (gen-queries this query-builders start-index count)]
      (data-one-object-list-response-from-result-set this rs start-index count)))
   ([this from-date to-date format-id start-index count]
    (condp = (some-> format-id .getValue)
